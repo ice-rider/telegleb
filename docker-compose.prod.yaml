@@ -10,7 +10,7 @@ services:
     command: redis-server --appendonly yes
 
   backend:
-    image: ghcr.io/gleb/telegleb/backend:latest
+    image: ghcr.io/ice-rider/telegleb/backend:latest
     container_name: telegleb_backend
     restart: unless-stopped
     depends_on:
@@ -32,7 +32,7 @@ services:
       - telegleb_network
 
   frontend:
-    image: ghcr.io/gleb/telegleb/frontend:latest
+    image: ghcr.io/ice-rider/telegleb/frontend:latest
     container_name: telegleb_frontend
     restart: unless-stopped
     depends_on:
@@ -41,7 +41,7 @@ services:
       - telegleb_network
 
   proxy:
-    image: ghcr.io/gleb/telegleb/proxy:latest
+    image: ghcr.io/ice-rider/telegleb/proxy:latest
     container_name: telegleb_proxy
     restart: unless-stopped
     depends_on:

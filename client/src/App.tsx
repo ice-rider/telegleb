@@ -1,12 +1,13 @@
 import { Show, createSignal, onMount } from "solid-js";
 import { useAuth } from "./features/auth";
 import { AuthFeature } from "./features/auth";
-import { ChatList } from "./features/chat-list";
+import { ChatList, useChatList } from "./features/chat-list";
 import { ChatWindow } from "./features/chat-window";
 import "./App.css";
 
 export default function App() {
   const { isLoggedIn, initFromStorage } = useAuth();
+  const { ownUserId } = useChatList();
   const [activeChatId, setActiveChatId] = createSignal<number | null>(null);
   const [activeChatTitle, setActiveChatTitle] = createSignal("");
 
@@ -14,8 +15,9 @@ export default function App() {
     initFromStorage();
   });
 
-  function handleSelectChat(id: number) {
+  function handleSelectChat(id: number, title: string) {
     setActiveChatId(id);
+    setActiveChatTitle(title);
   }
 
   function handleCloseChat() {
@@ -53,6 +55,7 @@ export default function App() {
               <ChatWindow
                 chatId={activeChatId()!}
                 chatTitle={activeChatTitle()}
+                ownUserId={ownUserId()}
                 onClose={handleCloseChat}
               />
             </Show>

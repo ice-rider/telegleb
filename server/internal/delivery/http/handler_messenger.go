@@ -39,8 +39,9 @@ type folderDTO struct {
 }
 
 type loadDashboardResponse struct {
-	Chats   []chatDTO   `json:"chats"`
-	Folders []folderDTO `json:"folders"`
+	Chats      []chatDTO   `json:"chats"`
+	Folders    []folderDTO `json:"folders"`
+	OwnUserID  int64       `json:"OwnUserID"`
 }
 
 type openChatRequest struct {
@@ -138,8 +139,9 @@ func (s *Server) handleLoadDashboard(ctx *fasthttp.RequestCtx) {
 	}
 
 	writeJSON(ctx, fasthttp.StatusOK, loadDashboardResponse{
-		Chats:   chats,
-		Folders: folders,
+		Chats:     chats,
+		Folders:   folders,
+		OwnUserID: output.OwnUserID,
 	})
 }
 

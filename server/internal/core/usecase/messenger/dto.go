@@ -22,8 +22,9 @@ func (i LoadDashboardInput) Validate() error {
 }
 
 type LoadDashboardOutput struct {
-	Chats   []domain.Chat
-	Folders []domain.Folder
+	Chats      []domain.Chat
+	Folders    []domain.Folder
+	OwnUserID  int64
 }
 
 type OpenChatInput struct {

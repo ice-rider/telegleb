@@ -25,12 +25,26 @@ func compileDictionaries(chats []tg.ChatClass, users []tg.UserClass) (map[int64]
 	return chatMap, userMap
 }
 
-func mapTelegramDialogs(dialogs []tg.DialogClass, chatMap map[int64]tg.ChatClass, userMap map[int64]tg.UserClass) []domain.Chat {
+func compileMessageMap(messages []tg.MessageClass) map[int]*tg.Message {
+	msgMap := make(map[int]*tg.Message, len(messages))
+	for _, m := range messages {
+		if msg, ok := m.(*tg.Message); ok {
+			msgMap[msg.ID] = msg
+		}
+	}
+	return msgMap
+}
+
+func mapTelegramDialogs(dialogs []tg.DialogClass, chatMap map[int64]tg.ChatClass, userMap map[int64]tg.UserClass, msgMap map[int]*tg.Message) []domain.Chat {
 	result := make([]domain.Chat, 0, len(dialogs))
 
 	for _, dClass := range dialogs {
 		d, ok := dClass.(*tg.Dialog)
 		if !ok {
+			continue
+		}
+
+		if d.FolderID == 1 {
 			continue
 		}
 
@@ -73,6 +87,16 @@ func mapTelegramDialogs(dialogs []tg.DialogClass, chatMap map[int64]tg.ChatClass
 		}
 
 		chat.UnreadCount = d.UnreadCount
+
+		if topMsg, found := msgMap[d.TopMessage]; found {
+			chat.LastMessage = domain.Message{
+				ID:        int64(topMsg.ID),
+				ChatID:    chat.ID,
+				Text:      topMsg.Message,
+				CreatedAt: time.Unix(int64(topMsg.Date), 0),
+			}
+		}
+
 		result = append(result, chat)
 	}
 

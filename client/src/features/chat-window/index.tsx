@@ -8,21 +8,22 @@ import "./ChatWindow.css";
 interface ChatWindowProps {
   chatId: number;
   chatTitle: string;
+  ownUserId: number;
   onClose: () => void;
 }
 
 export function ChatWindow(props: ChatWindowProps) {
-  const { messages, isLoading, isSending, openChat, sendMessage } =
+  const { groupedMessages, isLoading, isSending, openChat, sendMessage, isOwnMessage } =
     useChatWindow();
 
   let scrollRef!: HTMLDivElement;
 
   onMount(() => {
-    openChat(props.chatId, props.chatTitle);
+    openChat(props.chatId, props.chatTitle, props.ownUserId);
   });
 
   createEffect(() => {
-    messages();
+    groupedMessages();
     if (scrollRef) {
       scrollRef.scrollTop = scrollRef.scrollHeight;
     }
@@ -46,10 +47,24 @@ export function ChatWindow(props: ChatWindowProps) {
             </div>
           }
         >
-          <For each={messages()}>
-            {(msg) => <MessageItem message={msg} isOwn={msg.senderId === 0} />}
+          <For each={groupedMessages()}>
+            {(group) => (
+              <>
+                <div class="chat-window__date-separator">
+                  <span>{group.date}</span>
+                </div>
+                <For each={group.messages}>
+                  {(msg) => (
+                    <MessageItem
+                      message={msg}
+                      isOwn={isOwnMessage(msg.senderId)}
+                    />
+                  )}
+                </For>
+              </>
+            )}
           </For>
-          <Show when={messages().length === 0}>
+          <Show when={groupedMessages().length === 0}>
             <div class="chat-window__empty">Нет сообщений</div>
           </Show>
         </Show>

@@ -27,6 +27,7 @@ func (uc *LoadDashboardUseCase) Execute(ctx context.Context, input LoadDashboard
 
 	var chats []domain.Chat
 	var folders []domain.Folder
+	var ownUserID int64
 
 	g.Go(func() error {
 		var err error
@@ -40,12 +41,19 @@ func (uc *LoadDashboardUseCase) Execute(ctx context.Context, input LoadDashboard
 		return err
 	})
 
+	g.Go(func() error {
+		var err error
+		ownUserID, err = uc.chatRepo.GetOwnUserID(gCtx, input.SessionToken)
+		return err
+	})
+
 	if err := g.Wait(); err != nil {
 		return LoadDashboardOutput{}, ErrDashboardFailed
 	}
 
 	return LoadDashboardOutput{
-		Chats:   chats,
-		Folders: folders,
+		Chats:     chats,
+		Folders:   folders,
+		OwnUserID: ownUserID,
 	}, nil
 }

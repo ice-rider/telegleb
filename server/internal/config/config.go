@@ -27,8 +27,10 @@ type LogConfig struct {
 }
 
 type TelegramConfig struct {
-	AppID   int    `env:"TG_APP_ID" env-required:"true"`
-	AppHash string `env:"TG_APP_HASH" env-required:"true"`
+	AppID       int    `env:"TG_APP_ID" env-required:"true"`
+	AppHash     string `env:"TG_APP_HASH" env-required:"true"`
+	ProxyAddr   string `env:"TG_PROXY_ADDR" env-default:""`
+	ProxySecret string `env:"TG_PROXY_SECRET" env-default:""`
 }
 
 type RedisConfig struct {

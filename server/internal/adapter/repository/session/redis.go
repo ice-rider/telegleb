@@ -57,7 +57,7 @@ func (r *RedisSessionRepository) UpdateSession(ctx context.Context, s *domain.Au
 
 	ttl := time.Until(s.ExpiresAt)
 	if ttl <= 0 {
-		return ErrSessionNotFound
+		ttl = 24 * time.Hour
 	}
 
 	return r.client.Set(ctx, s.SessionToken, data, ttl).Err()

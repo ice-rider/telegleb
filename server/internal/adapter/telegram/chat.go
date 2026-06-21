@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/gotd/td/tg"
-	"telegleb/internal/core/usecase/chat"
 	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/chat"
 )
 
 type TelegramChatRepository struct {
@@ -35,10 +35,12 @@ func (r *TelegramChatRepository) GetChats(ctx context.Context, sessionToken stri
 	switch res := resp.(type) {
 	case *tg.MessagesDialogsSlice:
 		chatMap, userMap := compileDictionaries(res.Chats, res.Users)
-		return mapTelegramDialogs(res.Dialogs, chatMap, userMap), nil
+		msgMap := compileMessageMap(res.Messages)
+		return mapTelegramDialogs(res.Dialogs, chatMap, userMap, msgMap), nil
 	case *tg.MessagesDialogs:
 		chatMap, userMap := compileDictionaries(res.Chats, res.Users)
-		return mapTelegramDialogs(res.Dialogs, chatMap, userMap), nil
+		msgMap := compileMessageMap(res.Messages)
+		return mapTelegramDialogs(res.Dialogs, chatMap, userMap, msgMap), nil
 	default:
 		return []domain.Chat{}, nil
 	}
@@ -64,7 +66,6 @@ func (r *TelegramChatRepository) GetFolders(ctx context.Context, sessionToken st
 
 		var chatIDs []int64
 		for _, peerClass := range f.IncludePeers {
-			// Исправлено: переключаемся по типам InputPeerClass
 			switch p := peerClass.(type) {
 			case *tg.InputPeerUser:
 				chatIDs = append(chatIDs, p.UserID)
@@ -83,4 +84,26 @@ func (r *TelegramChatRepository) GetFolders(ctx context.Context, sessionToken st
 	}
 
 	return folders, nil
+}
+
+func (r *TelegramChatRepository) GetOwnUserID(ctx context.Context, sessionToken string) (int64, error) {
+	client, err := r.adapter.GetClient(ctx, sessionToken)
+	if err != nil {
+		return 0, err
+	}
+
+	users, err := client.API.UsersGetUsers(ctx, []tg.InputUserClass{
+		&tg.InputUserSelf{},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get own user info: %w", err)
+	}
+
+	for _, u := range users {
+		if user, ok := u.(*tg.User); ok {
+			return user.ID, nil
+		}
+	}
+
+	return 0, fmt.Errorf("own user not found in response")
 }

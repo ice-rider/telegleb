@@ -15,6 +15,7 @@ export interface VerifyPasswordResponse {
 export interface LoadDashboardResponse {
   chats: ChatDTO[];
   folders: FolderDTO[];
+  OwnUserID: number;
 }
 
 export interface OpenChatResponse {
@@ -163,6 +164,7 @@ export const api = {
     return {
       chats: data.chats.map(mapChat),
       folders: data.folders.map(mapFolder),
+      ownUserId: data.OwnUserID,
     };
   },
 

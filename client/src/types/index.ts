@@ -50,4 +50,5 @@ export interface AuthState {
 export interface DashboardData {
   chats: Chat[];
   folders: Folder[];
+  ownUserId: number;
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
 	"time"
 
@@ -50,11 +51,23 @@ func (r *TelegramMessageRepository) GetChatHistory(ctx context.Context, sessionT
 
 	switch res := resp.(type) {
 	case *tg.MessagesMessagesSlice:
-		return mapTelegramMessages(res.Messages), nil
+		msgs := mapTelegramMessages(res.Messages)
+		sort.Slice(msgs, func(i, j int) bool {
+			return msgs[i].CreatedAt.Before(msgs[j].CreatedAt)
+		})
+		return msgs, nil
 	case *tg.MessagesMessages:
-		return mapTelegramMessages(res.Messages), nil
+		msgs := mapTelegramMessages(res.Messages)
+		sort.Slice(msgs, func(i, j int) bool {
+			return msgs[i].CreatedAt.Before(msgs[j].CreatedAt)
+		})
+		return msgs, nil
 	case *tg.MessagesChannelMessages:
-		return mapTelegramMessages(res.Messages), nil
+		msgs := mapTelegramMessages(res.Messages)
+		sort.Slice(msgs, func(i, j int) bool {
+			return msgs[i].CreatedAt.Before(msgs[j].CreatedAt)
+		})
+		return msgs, nil
 	default:
 		return []domain.Message{}, nil
 	}

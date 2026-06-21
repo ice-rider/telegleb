@@ -10,7 +10,7 @@ const [authState, setAuthState] = createSignal<AuthState>({
 });
 
 export const useAuth = () => {
-  const isLoggedIn = createMemo(() => !!authState().sessionToken);
+  const isLoggedIn = createMemo(() => authState().status === "AUTHORIZED");
 
   async function requestLogin(phone: string) {
     setAuthState((s) => ({ ...s, isLoading: true, error: null }));

@@ -6,9 +6,11 @@ import { FolderTabs } from "./components/FolderTabs";
 import { Loader } from "../../shared/components";
 import "./ChatList.css";
 
+export { useChatList } from "./store";
+
 interface ChatListProps {
   activeChatId: number | null;
-  onSelectChat: (id: number) => void;
+  onSelectChat: (id: number, title: string) => void;
 }
 
 export function ChatList(props: ChatListProps) {
@@ -51,7 +53,7 @@ export function ChatList(props: ChatListProps) {
               <ChatCard
                 chat={chat}
                 isActive={props.activeChatId === chat.id}
-                onClick={() => props.onSelectChat(chat.id)}
+                onClick={() => props.onSelectChat(chat.id, chat.title)}
               />
             )}
           </For>

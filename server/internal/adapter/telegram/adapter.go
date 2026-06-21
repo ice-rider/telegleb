@@ -2,14 +2,19 @@ package telegram
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"telegleb/internal/core/domain"
 	"telegleb/internal/core/usecase/session"
 
 	"github.com/gotd/td/telegram"
+	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/tg"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type ActiveClient struct {
@@ -22,6 +27,8 @@ type ActiveClient struct {
 type TelegramAdapter struct {
 	appID       int
 	appHash     string
+	proxyAddr   string
+	proxySecret string
 	sessionRepo session.SessionRepository
 	log         *slog.Logger
 
@@ -29,10 +36,12 @@ type TelegramAdapter struct {
 	clientPool map[string]*ActiveClient
 }
 
-func NewTelegramAdapter(appID int, appHash string, sessionRepo session.SessionRepository, log *slog.Logger) *TelegramAdapter {
+func NewTelegramAdapter(appID int, appHash string, proxyAddr string, proxySecret string, sessionRepo session.SessionRepository, log *slog.Logger) *TelegramAdapter {
 	return &TelegramAdapter{
 		appID:       appID,
 		appHash:     appHash,
+		proxyAddr:   proxyAddr,
+		proxySecret: proxySecret,
 		sessionRepo: sessionRepo,
 		log:         log,
 		clientPool:  make(map[string]*ActiveClient),
@@ -84,6 +93,38 @@ func (a *TelegramAdapter) initAndFetchClient(ctx context.Context, sessionToken s
 	return active, nil
 }
 
+func (a *TelegramAdapter) buildClientOptions(authSession *domain.AuthSession) telegram.Options {
+	bridge := NewSessionBridge(&authSession.TelegramSessionData, func(updateCtx context.Context, data []byte) error {
+		authSession.TelegramSessionData = data
+		return a.sessionRepo.UpdateSession(updateCtx, authSession)
+	})
+
+	opts := telegram.Options{
+		SessionStorage: bridge,
+		OnDead: func(err error) {
+			a.log.Warn("telegram connection dead", slog.String("error", err.Error()))
+		},
+		Logger: a.buildZapLogger(),
+	}
+
+	if a.proxyAddr != "" && a.proxySecret != "" {
+		a.log.Info("configuring MTProxy resolver", slog.String("addr", a.proxyAddr))
+		secretBytes, err := hex.DecodeString(a.proxySecret)
+		if err != nil {
+			a.log.Error("failed to decode MTProxy secret hex", slog.String("error", err.Error()))
+		} else {
+			resolver, err := dcs.MTProxy(a.proxyAddr, secretBytes, dcs.MTProxyOptions{})
+			if err != nil {
+				a.log.Error("failed to create MTProxy resolver", slog.String("error", err.Error()))
+			} else {
+				opts.Resolver = resolver
+			}
+		}
+	}
+
+	return opts
+}
+
 func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *domain.AuthSession) (*telegram.Client, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -96,26 +137,22 @@ func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *do
 	a.log.Info("creating new telegram client",
 		slog.String("token", authSession.SessionToken[:8]+"..."),
 		slog.Int("appID", a.appID),
+		slog.Bool("hasProxy", a.proxyAddr != ""),
 	)
 
-	bridge := NewSessionBridge(&authSession.TelegramSessionData, func(updateCtx context.Context, data []byte) error {
-		authSession.TelegramSessionData = data
-		return a.sessionRepo.UpdateSession(updateCtx, authSession)
-	})
-
-	client := telegram.NewClient(a.appID, a.appHash, telegram.Options{
-		SessionStorage: bridge,
-	})
+	opts := a.buildClientOptions(authSession)
+	client := telegram.NewClient(a.appID, a.appHash, opts)
 
 	runCtx, runCancel := context.WithCancel(context.Background())
 	doneChan := make(chan error, 1)
-	readyChan := make(chan struct{})
+	readyChan := make(chan *tg.Client, 1)
 
 	go func() {
 		a.log.Info("starting telegram client.Run()")
 		err := client.Run(runCtx, func(cCtx context.Context) error {
-			a.log.Info("telegram client connected and ready")
-			close(readyChan)
+			a.log.Info("telegram client.Run callback fired")
+			readyChan <- client.API()
+			a.log.Info("telegram client callback waiting for shutdown")
 			<-cCtx.Done()
 			return nil
 		})
@@ -125,8 +162,15 @@ func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *do
 	}()
 
 	select {
-	case <-readyChan:
-		a.log.Info("telegram client ready")
+	case api := <-readyChan:
+		a.log.Info("telegram client ready, storing in pool")
+		a.clientPool[authSession.SessionToken] = &ActiveClient{
+			Client:    client,
+			API:       api,
+			CancelRun: runCancel,
+			Done:      doneChan,
+		}
+		return client, nil
 	case err := <-doneChan:
 		runCancel()
 		a.log.Error("telegram client failed to start", slog.String("error", err.Error()))
@@ -136,14 +180,15 @@ func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *do
 		a.log.Error("context cancelled while waiting for telegram client")
 		return nil, ctx.Err()
 	}
+}
 
-	a.clientPool[authSession.SessionToken] = &ActiveClient{
-		Client:    client,
-		CancelRun: runCancel,
-		Done:      doneChan,
-	}
-
-	return client, nil
+func (a *TelegramAdapter) buildZapLogger() *zap.Logger {
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+		zapcore.Lock(os.Stdout),
+		zapcore.DebugLevel,
+	)
+	return zap.New(core)
 }
 
 func (a *TelegramAdapter) TerminateSession(ctx context.Context, sessionToken string) error {

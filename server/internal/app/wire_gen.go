@@ -24,6 +24,14 @@ func provideTelegramAppHash(cfg *config.Config) string {
 	return cfg.Telegram.AppHash
 }
 
+func provideTelegramProxyAddr(cfg *config.Config) string {
+	return cfg.Telegram.ProxyAddr
+}
+
+func provideTelegramProxySecret(cfg *config.Config) string {
+	return cfg.Telegram.ProxySecret
+}
+
 func provideJWTManager(cfg *config.Config) *jwt.TokenManager {
 	return jwt.NewTokenManager(cfg.JWT.Secret, cfg.JWT.TTL)
 }
@@ -40,8 +48,10 @@ func InitApp() (*App, error) {
 	}
 	int2 := provideTelegramAppID(configConfig)
 	string2 := provideTelegramAppHash(configConfig)
+	string3 := provideTelegramProxyAddr(configConfig)
+	string4 := provideTelegramProxySecret(configConfig)
 	sessionRepository := session.NewRedisSessionRepository(client)
-	telegramAdapter := telegram.NewTelegramAdapter(int2, string2, sessionRepository, logger)
+	telegramAdapter := telegram.NewTelegramAdapter(int2, string2, string3, string4, sessionRepository, logger)
 	tokenManager := provideJWTManager(configConfig)
 	requestLoginUseCase := auth.NewRequestLoginUseCase(telegramAdapter, sessionRepository, tokenManager)
 	verifyCodeUseCase := auth.NewVerifyCodeUseCase(telegramAdapter, sessionRepository)

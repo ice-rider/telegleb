@@ -5,6 +5,7 @@ import (
 	"telegleb/internal/core/domain"
 	"telegleb/internal/core/usecase/session"
 	"telegleb/internal/lib/jwt"
+	"time"
 )
 
 type RequestLoginUseCase struct {
@@ -35,6 +36,7 @@ func (uc *RequestLoginUseCase) Execute(ctx context.Context, input RequestLoginIn
 		SessionToken: token,
 		PhoneNumber:  input.PhoneNumber,
 		Status:       domain.AWAITING_PHONE,
+		ExpiresAt:    time.Now().Add(24 * time.Hour),
 	}
 
 	codeHash, err := uc.authRepo.InitiateLogin(ctx, authSession, input.PhoneNumber)

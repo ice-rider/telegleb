@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, createMemo } from "solid-js";
 import { api } from "../../core/api";
 import type { Message } from "../../types";
 
@@ -9,10 +9,13 @@ const [isLoading, setIsLoading] = createSignal(false);
 const [isSending, setIsSending] = createSignal(false);
 const [error, setError] = createSignal<string | null>(null);
 
+let currentOwnUserId = 0;
+
 export const useChatWindow = () => {
-  async function openChat(chatId: number, title: string) {
+  async function openChat(chatId: number, title: string, ownUserId: number) {
     setActiveChatId(chatId);
     setChatTitle(title);
+    currentOwnUserId = ownUserId;
     setMessages([]);
     setIsLoading(true);
     setError(null);
@@ -46,8 +49,37 @@ export const useChatWindow = () => {
     setChatTitle("");
   }
 
+  const groupedMessages = createMemo(() => {
+    const msgs = messages();
+    const groups: { date: string; messages: Message[] }[] = [];
+    let currentDate = "";
+
+    for (const msg of msgs) {
+      const d = new Date(msg.createdAt);
+      const dateKey = d.toLocaleDateString("ru-RU", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      if (dateKey !== currentDate) {
+        currentDate = dateKey;
+        groups.push({ date: dateKey, messages: [msg] });
+      } else {
+        groups[groups.length - 1].messages.push(msg);
+      }
+    }
+
+    return groups;
+  });
+
+  function isOwnMessage(senderId: number): boolean {
+    return senderId === currentOwnUserId;
+  }
+
   return {
     messages,
+    groupedMessages,
     activeChatId,
     chatTitle,
     isLoading,
@@ -56,5 +88,6 @@ export const useChatWindow = () => {
     openChat,
     sendMessage,
     closeChat,
+    isOwnMessage,
   };
 };
