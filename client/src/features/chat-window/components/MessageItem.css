@@ -1,0 +1,40 @@
+.message {
+  display: flex;
+  padding: 2px 16px;
+}
+
+.message--own {
+  justify-content: flex-end;
+}
+
+.message__bubble {
+  max-width: 65%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #f1f1f1;
+  position: relative;
+}
+
+.message--own .message__bubble {
+  background: #effdde;
+}
+
+.message__text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #333;
+  word-wrap: break-word;
+}
+
+.message__time {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  text-align: right;
+  margin-top: 4px;
+}
+
+.message--own .message__time {
+  color: #6ab76a;
+}

@@ -1,0 +1,2212 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+cmd/
+  app/
+    main.go
+internal/
+  adapter/
+    repository/
+      session/
+        redis.go
+    telegram/
+      adapter.go
+      auth.go
+      chat.go
+      errors.go
+      mapper.go
+      media.go
+      message.go
+      session.go
+      wire.go
+  app/
+    app.go
+    wire_gen.go
+    wire.go
+  config/
+    config.go
+  core/
+    domain/
+      auth_session.go
+      chat.go
+      folder.go
+      message.go
+      user.go
+    usecase/
+      auth/
+        dto.go
+        errors.go
+        logout_usecase.go
+        repository.go
+        request_login_usecase.go
+        verify_code_usecase.go
+        verify_password_usecase.go
+      chat/
+        repository.go
+      media/
+        repository.go
+      message/
+        repository.go
+      messenger/
+        download_media_link_usecase.go
+        dto.go
+        errors.go
+        load_dashboard_usecase.go
+        open_chat_usecase.go
+        send_message_usecase.go
+        stream_media_chunk.go
+      session/
+        repository.go
+  lib/
+    jwt/
+      jwt.go
+    logger/
+      logger.go
+.dockerignore
+Dockerfile
+go.mod
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="cmd/app/main.go">
+package main
+
+import (
+	"fmt"
+	"os"
+	"telegleb/internal/app"
+)
+
+func main() {
+	application, err := app.InitApp()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "critical error during initialization: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := application.Run(); err != nil {
+		application.Log.Error("application runtime error", "error", err.Error())
+		os.Exit(1)
+	}
+}
+</file>
+
+<file path="internal/adapter/repository/session/redis.go">
+package session
+
+import (
+	"encoding/json"
+	"context"
+	"errors"
+	"time"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/session"
+
+	"github.com/redis/go-redis/v9"
+)
+
+var ErrSessionNotFound = errors.New("session not found")
+
+type RedisSessionRepository struct {
+	client *redis.Client
+}
+
+func NewRedisSessionRepository(client *redis.Client) session.SessionRepository {
+	return &RedisSessionRepository{
+		client: client,
+	}
+}
+
+func (r *RedisSessionRepository) CreateSession(ctx context.Context, s *domain.AuthSession) error {
+	return r.UpdateSession(ctx, s)
+}
+
+func (r *RedisSessionRepository) GetSessionByToken(ctx context.Context, token string) (*domain.AuthSession, error) {
+	data, err := r.client.Get(ctx, token).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var s domain.AuthSession
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, err
+	}
+
+	if time.Now().After(s.ExpiresAt) {
+		_ = r.DeleteSession(ctx, token)
+		return nil, ErrSessionNotFound
+	}
+
+	return &s, nil
+}
+
+func (r *RedisSessionRepository) UpdateSession(ctx context.Context, s *domain.AuthSession) error {
+	data, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+
+	ttl := time.Until(s.ExpiresAt)
+	if ttl <= 0 {
+		return ErrSessionNotFound
+	}
+
+	return r.client.Set(ctx, s.SessionToken, data, ttl).Err()
+}
+
+func (r *RedisSessionRepository) DeleteSession(ctx context.Context, token string) error {
+	return r.client.Del(ctx, token).Err()
+}
+</file>
+
+<file path="internal/adapter/telegram/adapter.go">
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/session"
+
+	"github.com/gotd/td/telegram"
+	"github.com/gotd/td/tg"
+)
+
+type ActiveClient struct {
+	Client    *telegram.Client
+	API       *tg.Client
+	CancelRun context.CancelFunc
+	Done      <-chan error
+}
+
+type TelegramAdapter struct {
+	appID       int
+	appHash     string
+	sessionRepo session.SessionRepository
+
+	mu          sync.RWMutex
+	clientPool  map[string]*ActiveClient
+}
+
+func NewTelegramAdapter(appID int, appHash string, sessionRepo session.SessionRepository) *TelegramAdapter {
+	return &TelegramAdapter{
+		appID:       appID,
+		appHash:     appHash,
+		sessionRepo: sessionRepo,
+		clientPool:  make(map[string]*ActiveClient),
+	}
+}
+
+func (a *TelegramAdapter) GetClient(ctx context.Context, sessionToken string) (*ActiveClient, error) {
+	a.mu.RLock()
+	client, exists := a.clientPool[sessionToken]
+	a.mu.RUnlock()
+
+	if exists {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err := <-client.Done:
+			if err != nil {
+				a.mu.Lock()
+				delete(a.clientPool, sessionToken)
+				a.mu.Unlock()
+				return a.initAndFetchClient(ctx, sessionToken)
+			}
+		default:
+			return client, nil
+		}
+	}
+
+	return a.initAndFetchClient(ctx, sessionToken)
+}
+
+func (a *TelegramAdapter) initAndFetchClient(ctx context.Context, sessionToken string) (*ActiveClient, error) {
+	authSession, err := a.sessionRepo.GetSessionByToken(ctx, sessionToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSessionNotFound, err)
+	}
+
+	_, err = a.GetOrCreateClient(ctx, authSession)
+	if err != nil {
+		return nil, err
+	}
+
+	a.mu.RLock()
+	active := a.clientPool[sessionToken]
+	a.mu.RUnlock()
+	return active, nil
+}
+
+func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *domain.AuthSession) (*telegram.Client, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if active, exists := a.clientPool[authSession.SessionToken]; exists {
+		return active.Client, nil
+	}
+
+	bridge := NewSessionBridge(&authSession.TelegramSessionData, func(updateCtx context.Context, data []byte) error {
+		authSession.TelegramSessionData = data
+		return a.sessionRepo.UpdateSession(updateCtx, authSession)
+	})
+
+	client := telegram.NewClient(a.appID, a.appHash, telegram.Options{
+		SessionStorage: bridge,
+	})
+
+	runCtx, runCancel := context.WithCancel(context.Background())
+	doneChan := make(chan error, 1)
+
+	go func() {
+		err := client.Run(runCtx, func(cCtx context.Context) error {
+			return nil
+		})
+		doneChan <- err
+		close(doneChan)
+	}()
+
+	a.clientPool[authSession.SessionToken] = &ActiveClient{
+		Client:    client,
+		CancelRun: runCancel,
+		Done:      doneChan,
+	}
+
+	return client, nil
+}
+
+func (a *TelegramAdapter) TerminateSession(ctx context.Context, sessionToken string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	active, exists := a.clientPool[sessionToken]
+	if !exists {
+		return nil
+	}
+
+	active.CancelRun()
+	delete(a.clientPool, sessionToken)
+
+	return nil
+}
+</file>
+
+<file path="internal/adapter/telegram/auth.go">
+package telegram
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"telegleb/internal/core/domain"
+	"time"
+
+	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
+)
+
+func (a *TelegramAdapter) InitiateLogin(ctx context.Context, session *domain.AuthSession, phoneNumber string) (string, error) {
+	client, err := a.GetOrCreateClient(ctx, session)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrClientInitFailed, err)
+	}
+
+	api := client.API()
+
+	res, err := api.AuthSendCode(ctx, &tg.AuthSendCodeRequest{
+		PhoneNumber: phoneNumber,
+		APIID:       a.appID,
+		APIHash:     a.appHash,
+		Settings:    tg.CodeSettings{},
+	})
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrTelegramSendCode, err)
+	}
+
+	switch codeType := res.(type) {
+	case *tg.AuthSentCode:
+		return codeType.PhoneCodeHash, nil
+	default:
+		return "", ErrUnexpectedCodeType
+	}
+}
+
+func (a *TelegramAdapter) SubmitCode(ctx context.Context, session *domain.AuthSession, code string) (bool, error) {
+	client, err := a.GetOrCreateClient(ctx, session)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrClientInitFailed, err)
+	}
+
+	api := client.API()
+
+	res, err := api.AuthSignIn(ctx, &tg.AuthSignInRequest{
+		PhoneNumber:   session.PhoneNumber,
+		PhoneCodeHash: session.TelegramCodeHash,
+		PhoneCode:     code,
+	})
+
+	if err != nil {
+		if tgerr.Is(err, ErrCodeSessionPasswordNeeded) {
+			return true, nil
+		}
+		return false, fmt.Errorf("%w: %v", ErrTelegramSignIn, err)
+	}
+
+	switch res.(type) {
+	case *tg.AuthAuthorization:
+		return false, nil
+	default:
+		return false, ErrUnexpectedSignInType
+	}
+}
+
+func (a *TelegramAdapter) SubmitPassword(ctx context.Context, session *domain.AuthSession, password string) error {
+	activeClient, err := a.GetClient(ctx, session.SessionToken)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrClientInitFailed, err)
+	}
+
+	authClient := auth.NewClient(activeClient.API, rand.Reader, a.appID, a.appHash)
+
+	_, err = authClient.Password(ctx, password)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalid2FAPassword, err)
+	}
+
+	session.Status = domain.AUTHORIZED
+	session.ExpiresAt = time.Now().Add(24 * time.Hour)
+
+	// Сохраняем обновленные данные в Redis
+	if err := a.sessionRepo.UpdateSession(ctx, session); err != nil {
+		return fmt.Errorf("failed to update session after password verification: %w", err)
+	}
+
+	return nil
+}
+</file>
+
+<file path="internal/adapter/telegram/chat.go">
+package telegram
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/gotd/td/tg"
+	"telegleb/internal/core/usecase/chat"
+	"telegleb/internal/core/domain"
+)
+
+type TelegramChatRepository struct {
+	adapter *TelegramAdapter
+}
+
+func NewTelegramChatRepository(adapter *TelegramAdapter) chat.ChatRepository {
+	return &TelegramChatRepository{adapter: adapter}
+}
+
+func (r *TelegramChatRepository) GetChats(ctx context.Context, sessionToken string, limit int, offset int) ([]domain.Chat, error) {
+	client, err := r.adapter.GetClient(ctx, sessionToken)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.API.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+		OffsetID:   offset,
+		Limit:      limit,
+		OffsetPeer: &tg.InputPeerEmpty{},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch telegram dialogs: %w", err)
+	}
+
+	switch res := resp.(type) {
+	case *tg.MessagesDialogsSlice:
+		chatMap, userMap := compileDictionaries(res.Chats, res.Users)
+		return mapTelegramDialogs(res.Dialogs, chatMap, userMap), nil
+	case *tg.MessagesDialogs:
+		chatMap, userMap := compileDictionaries(res.Chats, res.Users)
+		return mapTelegramDialogs(res.Dialogs, chatMap, userMap), nil
+	default:
+		return []domain.Chat{}, nil
+	}
+}
+
+func (r *TelegramChatRepository) GetFolders(ctx context.Context, sessionToken string) ([]domain.Folder, error) {
+	client, err := r.adapter.GetClient(ctx, sessionToken)
+	if err != nil {
+		return nil, err
+	}
+
+	dialogFilters, err := client.API.MessagesGetDialogFilters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch telegram folders: %w", err)
+	}
+
+	var folders []domain.Folder
+	for _, fClass := range dialogFilters.Filters {
+		f, ok := fClass.(*tg.DialogFilter)
+		if !ok {
+			continue
+		}
+
+		var chatIDs []int64
+		for _, peerClass := range f.IncludePeers {
+			// Исправлено: переключаемся по типам InputPeerClass
+			switch p := peerClass.(type) {
+			case *tg.InputPeerUser:
+				chatIDs = append(chatIDs, p.UserID)
+			case *tg.InputPeerChat:
+				chatIDs = append(chatIDs, p.ChatID)
+			case *tg.InputPeerChannel:
+				chatIDs = append(chatIDs, p.ChannelID)
+			}
+		}
+
+		folders = append(folders, domain.Folder{
+			ID:      f.ID,
+			Title:   f.Title.Text,
+			ChatIDs: chatIDs,
+		})
+	}
+
+	return folders, nil
+}
+</file>
+
+<file path="internal/adapter/telegram/errors.go">
+package telegram
+
+import "errors"
+
+const (
+	ErrCodeSessionPasswordNeeded = "SESSION_PASSWORD_NEEDED"
+)
+
+var (
+	ErrClientInitFailed     = errors.New("telegram client initialization failed")
+	ErrTelegramSendCode     = errors.New("telegram api error: failed to send verification code")
+	ErrUnexpectedCodeType   = errors.New("telegram api error: unexpected response type on send code")
+	ErrTelegramSignIn       = errors.New("telegram api error: failed to sign in with code")
+	ErrUnexpectedSignInType = errors.New("telegram api error: unexpected response type on sign in")
+	ErrInvalid2FAPassword   = errors.New("telegram api error: invalid 2FA password")
+	ErrSessionNotFound      = errors.New("session not found for the given token")
+)
+</file>
+
+<file path="internal/adapter/telegram/mapper.go">
+package telegram
+
+import (
+	"fmt"
+	"time"
+
+	"telegleb/internal/core/domain"
+
+	"github.com/gotd/td/tg"
+)
+
+func compileDictionaries(chats []tg.ChatClass, users []tg.UserClass) (map[int64]tg.ChatClass, map[int64]tg.UserClass) {
+	chatMap := make(map[int64]tg.ChatClass, len(chats))
+	for _, c := range chats {
+		if c != nil {
+			chatMap[c.GetID()] = c
+		}
+	}
+	userMap := make(map[int64]tg.UserClass, len(users))
+	for _, u := range users {
+		if u != nil {
+			userMap[u.GetID()] = u
+		}
+	}
+	return chatMap, userMap
+}
+
+func mapTelegramDialogs(dialogs []tg.DialogClass, chatMap map[int64]tg.ChatClass, userMap map[int64]tg.UserClass) []domain.Chat {
+	result := make([]domain.Chat, 0, len(dialogs))
+
+	for _, dClass := range dialogs {
+		d, ok := dClass.(*tg.Dialog)
+		if !ok {
+			continue
+		}
+
+		var chat domain.Chat
+		peer := d.Peer
+
+		switch p := peer.(type) {
+		case *tg.PeerUser:
+			chat.ID = p.UserID
+			chat.Type = domain.DIRECT
+			if u, found := userMap[p.UserID]; found {
+				if userObj, ok := u.(*tg.User); ok {
+					chat.Title = userObj.FirstName
+					if userObj.LastName != "" {
+						chat.Title += " " + userObj.LastName
+					}
+				}
+			}
+		case *tg.PeerChat:
+			chat.ID = p.ChatID
+			chat.Type = domain.GROUP
+			if c, found := chatMap[p.ChatID]; found {
+				if chatObj, ok := c.(*tg.Chat); ok {
+					chat.Title = chatObj.Title
+				}
+			}
+		case *tg.PeerChannel:
+			chat.ID = p.ChannelID
+			chat.Type = domain.CHANNEL
+			if c, found := chatMap[p.ChannelID]; found {
+				if channelObj, ok := c.(*tg.Channel); ok {
+					chat.Title = channelObj.Title
+					if channelObj.Megagroup {
+						chat.Type = domain.GROUP
+					}
+				}
+			}
+		default:
+			continue
+		}
+
+		chat.UnreadCount = d.UnreadCount
+		result = append(result, chat)
+	}
+
+	return result
+}
+
+func mapTelegramMessages(messages []tg.MessageClass) []domain.Message {
+	result := make([]domain.Message, 0, len(messages))
+
+	for _, mClass := range messages {
+		msg, ok := mClass.(*tg.Message)
+		if !ok {
+			continue
+		}
+
+		var chatID int64
+		switch p := msg.PeerID.(type) {
+		case *tg.PeerUser:
+			chatID = p.UserID
+		case *tg.PeerChat:
+			chatID = p.ChatID
+		case *tg.PeerChannel:
+			chatID = p.ChannelID
+		}
+
+		var senderID int64
+		if msg.FromID != nil {
+			switch s := msg.FromID.(type) {
+			case *tg.PeerUser:
+				senderID = s.UserID
+			}
+		} else if chatID != 0 {
+			senderID = chatID
+		}
+
+		hasMedia := false
+		mediaID := ""
+		if msg.Media != nil {
+			hasMedia = true
+			if document, ok := msg.Media.(*tg.MessageMediaDocument); ok {
+				if doc, ok := document.Document.(*tg.Document); ok {
+					mediaID = fmt.Sprintf("doc_%d_%d", doc.ID, doc.AccessHash)
+				}
+			} else if photo, ok := msg.Media.(*tg.MessageMediaPhoto); ok {
+				if p, ok := photo.Photo.(*tg.Photo); ok {
+					mediaID = fmt.Sprintf("photo_%d_%d", p.ID, p.AccessHash)
+				}
+			}
+		}
+
+		result = append(result, domain.Message{
+			ID:        int64(msg.ID),
+			ChatID:    chatID,
+			SenderID:  senderID,
+			Text:      msg.Message,
+			CreatedAt: time.Unix(int64(msg.Date), 0),
+			HasMedia:  hasMedia,
+			MediaId:   mediaID,
+		})
+	}
+
+	return result
+}
+</file>
+
+<file path="internal/adapter/telegram/media.go">
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/gotd/td/tg"
+	"telegleb/internal/core/usecase/media"
+)
+
+type TelegramMediaRepository struct {
+	adapter *TelegramAdapter
+}
+
+func NewTelegramMediaRepository(adapter *TelegramAdapter) media.MediaRepository {
+	return &TelegramMediaRepository{adapter: adapter}
+}
+
+func (r *TelegramMediaRepository) DownloadMediaLink(ctx context.Context, sessionToken string, mediaID string) (string, error) {
+	return fmt.Sprintf("/api/v1/media/stream/%s", mediaID), nil
+}
+
+func (r *TelegramMediaRepository) DownloadMediaChunk(ctx context.Context, sessionToken string, mediaID string, offset int64, limit int) ([]byte, error) {
+	client, err := r.adapter.GetClient(ctx, sessionToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Разбираем наш составной ID
+	parts := strings.Split(mediaID, "_")
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("invalid media id format")
+	}
+
+	mediaType := parts[0]
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid media structural component id")
+	}
+	accessHash, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid media structural component hash")
+	}
+
+	var location tg.InputFileLocationClass
+
+	if mediaType == "doc" {
+		location = &tg.InputDocumentFileLocation{
+			ID:            id,
+			AccessHash:    accessHash,
+			FileReference: []byte{}, // Для тестов пустой референс, в продакшене извлекается из сообщения
+		}
+	} else {
+		location = &tg.InputPhotoFileLocation{
+			ID:            id,
+			AccessHash:    accessHash,
+			FileReference: []byte{},
+			ThumbSize:     "x", // Запрашиваем стандартный большой размер картинки
+		}
+	}
+
+	// Делаем прямой запрос к дата-центрам Telegram для получения байтового сегмента
+	resp, err := client.API.UploadGetFile(ctx, &tg.UploadGetFileRequest{
+		Location: location,
+		Offset:   offset,
+		Limit:    limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to download media chunk from telegram: %w", err)
+	}
+
+	switch result := resp.(type) {
+	case *tg.UploadFile:
+		return result.Bytes, nil
+	default:
+		return nil, fmt.Errorf("unexpected file response type from telegram api")
+	}
+}
+</file>
+
+<file path="internal/adapter/telegram/message.go">
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"math/rand"
+	"strconv"
+	"time"
+
+	"github.com/gotd/td/tg"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/message"
+)
+
+type TelegramMessageRepository struct {
+	adapter *TelegramAdapter
+}
+
+func NewTelegramMessageRepository(adapter *TelegramAdapter) message.MessageRepository {
+	return &TelegramMessageRepository{adapter: adapter}
+}
+
+func (r *TelegramMessageRepository) GetChatHistory(ctx context.Context, sessionToken string, chatIDStr string, limit int, offsetID int) ([]domain.Message, error) {
+	client, err := r.adapter.GetClient(ctx, sessionToken)
+	if err != nil {
+		return nil, err
+	}
+
+	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid chat id format: %w", err)
+	}
+
+	resp, err := client.API.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+		Peer:     &tg.InputPeerUser{UserID: chatID},
+		Limit:    limit,
+		OffsetID: offsetID,
+	})
+	if err != nil {
+		// Реактивный фолбэк для каналов/супергрупп
+		resp, err = client.API.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+			Peer:     &tg.InputPeerChannel{ChannelID: chatID},
+			Limit:    limit,
+			OffsetID: offsetID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch chat history: %w", err)
+		}
+	}
+
+	switch res := resp.(type) {
+	case *tg.MessagesMessagesSlice:
+		return mapTelegramMessages(res.Messages), nil
+	case *tg.MessagesMessages:
+		return mapTelegramMessages(res.Messages), nil
+	case *tg.MessagesChannelMessages:
+		return mapTelegramMessages(res.Messages), nil
+	default:
+		return []domain.Message{}, nil
+	}
+}
+
+func (r *TelegramMessageRepository) SendMessage(ctx context.Context, sessionToken string, chatIDStr string, text string) (domain.Message, error) {
+	var emptyMsg domain.Message
+	client, err := r.adapter.GetClient(ctx, sessionToken)
+	if err != nil {
+		return emptyMsg, err
+	}
+
+	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	if err != nil {
+		return emptyMsg, fmt.Errorf("invalid chat id format: %w", err)
+	}
+
+	randomID := rand.Int63()
+	req := &tg.MessagesSendMessageRequest{
+		Peer:     &tg.InputPeerUser{UserID: chatID},
+		Message:  text,
+		RandomID: randomID,
+	}
+
+	// Выполняем запрос к Telegram API
+	updates, err := client.API.MessagesSendMessage(ctx, req)
+	if err != nil {
+		// Исправлено: Если это группа/канал, подменяем получателя в структуре req и отправляем ее же
+		req.Peer = &tg.InputPeerChannel{ChannelID: chatID}
+		updates, err = client.API.MessagesSendMessage(ctx, req)
+		if err != nil {
+			return emptyMsg, fmt.Errorf("failed to send telegram message: %w", err)
+		}
+	}
+
+	// Безопасный фолбэк для ID на случай, если структура ответов пуста
+	generatedID := int64(randomID & 0x7FFFFFFF)
+
+	if updates != nil {
+		switch u := updates.(type) {
+		case *tg.UpdateShortSentMessage: // Исправлено: Update вместо Updates (в единственном числе)
+			generatedID = int64(u.ID)
+		case *tg.Updates:
+			for _, updateClass := range u.Updates {
+				if m, ok := updateClass.(*tg.UpdateNewMessage); ok {
+					if msgObj, ok := m.Message.(*tg.Message); ok {
+						generatedID = int64(msgObj.ID)
+						break
+					}
+				}
+				if m, ok := updateClass.(*tg.UpdateNewChannelMessage); ok {
+					if msgObj, ok := m.Message.(*tg.Message); ok {
+						generatedID = int64(msgObj.ID)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return domain.Message{
+		ID:        generatedID,
+		ChatID:    chatID,
+		SenderID:  0, // Идентификатор "селф"
+		Text:      text,
+		CreatedAt: time.Now(),
+		HasMedia:  false,
+		MediaId:   "",
+	}, nil
+}
+</file>
+
+<file path="internal/adapter/telegram/session.go">
+package telegram
+
+import (
+	"context"
+	"sync"
+
+	"github.com/gotd/td/session"
+)
+
+type SessionBridge struct {
+	mu          sync.Mutex
+	sessionData *[]byte
+	onUpdate    func(ctx context.Context, data []byte) error
+}
+
+func NewSessionBridge(sessionData *[]byte, onUpdate func(ctx context.Context, data []byte) error) *SessionBridge {
+	return &SessionBridge{
+		sessionData: sessionData,
+		onUpdate:    onUpdate,
+	}
+}
+
+func (s *SessionBridge) LoadSession(ctx context.Context) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sessionData == nil || len(*s.sessionData) == 0 {
+		return nil, session.ErrNotFound
+	}
+	return *s.sessionData, nil
+}
+
+func (s *SessionBridge) StoreSession(ctx context.Context, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.onUpdate != nil {
+		return s.onUpdate(ctx, data)
+	}
+	return nil
+}
+</file>
+
+<file path="internal/adapter/telegram/wire.go">
+package telegram
+
+import (
+	"github.com/google/wire"
+)
+
+var ProviderSet = wire.NewSet(
+	NewTelegramAdapter,
+	NewTelegramChatRepository,
+	NewTelegramMessageRepository,
+	NewTelegramMediaRepository,
+)
+</file>
+
+<file path="internal/app/app.go">
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"telegleb/internal/config"
+	"telegleb/internal/core/usecase/auth"
+	"telegleb/internal/core/usecase/messenger"
+	"telegleb/internal/lib/logger"
+
+	"github.com/redis/go-redis/v9"
+)
+
+type App struct {
+	Cfg *config.Config
+	Log *slog.Logger
+	Rdb *redis.Client
+
+	// Auth UseCases
+	requestLoginUseCase   *auth.RequestLoginUseCase
+	verifyCodeUseCase     *auth.VerifyCodeUseCase
+	verifyPasswordUseCase *auth.VerifyPasswordUseCase
+	logoutUseCase         *auth.LogoutUseCase
+
+	// Messenger UseCases
+	loadDashboardUseCase    *messenger.LoadDashboardUseCase
+	openChatUseCase         *messenger.OpenChatUseCase
+	sendMessageUseCase      *messenger.SendMessageUseCase
+	streamMediaChunkUseCase *messenger.StreamMediaChunkUseCase
+}
+
+func NewApp(
+	cfg *config.Config,
+	log *slog.Logger,
+	rdb *redis.Client,
+	requestLoginUseCase *auth.RequestLoginUseCase,
+	verifyCodeUseCase *auth.VerifyCodeUseCase,
+	verifyPasswordUseCase *auth.VerifyPasswordUseCase,
+	logoutUseCase *auth.LogoutUseCase,
+	loadDashboardUseCase *messenger.LoadDashboardUseCase,
+	openChatUseCase *messenger.OpenChatUseCase,
+	sendMessageUseCase *messenger.SendMessageUseCase,
+	streamMediaChunkUseCase *messenger.StreamMediaChunkUseCase) *App {
+
+	return &App{
+		Cfg:                     cfg,
+		Log:                     log,
+		Rdb:                     rdb,
+		requestLoginUseCase:     requestLoginUseCase,
+		verifyCodeUseCase:       verifyCodeUseCase,
+		verifyPasswordUseCase:   verifyPasswordUseCase,
+		logoutUseCase:           logoutUseCase,
+		loadDashboardUseCase:    loadDashboardUseCase,
+		openChatUseCase:         openChatUseCase,
+		sendMessageUseCase:      sendMessageUseCase,
+		streamMediaChunkUseCase: streamMediaChunkUseCase,
+	}
+}
+
+func ProvideLogger(cfg *config.Config) *slog.Logger {
+	return logger.SetupLogger(cfg.Log.Level, cfg.Log.JSON)
+}
+
+func ProvideRedis(cfg *config.Config, log *slog.Logger) (*redis.Client, error) {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Redis.Timeout)
+	defer cancel()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("redis ping failed: %w", err)
+	}
+
+	log.Info("connected to redis successfully", slog.String("host", cfg.Redis.Host))
+	return rdb, nil
+}
+
+func (a *App) Run() error {
+	a.Log.Info("application started successfully", slog.String("env", a.Cfg.Env))
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// TODO: bind http server here
+
+	sign := <-stop
+	a.Log.Info("stopping application gracefully", slog.String("signal", sign.String()))
+
+	if err := a.Rdb.Close(); err != nil {
+		a.Log.Error("failed to close redis client", slog.String("error", err.Error()))
+	}
+
+	a.Log.Info("application stopped completely")
+	return nil
+}
+</file>
+
+<file path="internal/app/wire_gen.go">
+// Code generated by Wire. DO NOT EDIT.
+
+//go:generate go run -mod=mod github.com/google/wire/cmd/wire
+//go:build !wireinject
+// +build !wireinject
+
+package app
+
+import (
+	"telegleb/internal/config"
+)
+
+// Injectors from wire.go:
+
+func InitApp() (*App, error) {
+	configConfig, err := config.NewConfig()
+	if err != nil {
+		return nil, err
+	}
+	logger := ProvideLogger(configConfig)
+	client, err := ProvideRedis(configConfig, logger)
+	if err != nil {
+		return nil, err
+	}
+	app := NewApp(configConfig, logger, client)
+	return app, nil
+}
+</file>
+
+<file path="internal/app/wire.go">
+//go:build wireinject
+// +build wireinject
+
+package app
+
+import (
+	"telegleb/internal/config"
+	"telegleb/internal/adapter/repository/session"
+	"telegleb/internal/adapter/telegram"
+	
+	"telegleb/internal/core/usecase/auth"
+	"telegleb/internal/core/usecase/messenger"
+
+	"github.com/google/wire"
+)
+
+func InitApp() (*App, error) {
+	panic(wire.Build(
+		config.NewConfig,
+		ProvideLogger,
+		ProvideRedis,
+
+		// Репозиторий сессий (Redis)
+		// Так как NewRedisSessionRepository возвращает интерфейс session.SessionRepository,
+		// никакой wire.Bind здесь больше не нужен.
+		session.NewRedisSessionRepository, 
+
+		// Сет адаптеров Telegram (репозитории чатов, сообщений, медиа и сам адаптер)
+		telegram.ProviderSet,
+
+		// Провайдеры Use Cases (Бизнес-логика авторизации)
+		auth.NewRequestLoginUseCase,
+		auth.NewVerifyCodeUseCase,
+		auth.NewVerifyPasswordUseCase,
+		auth.NewLogoutUseCase,
+		
+		// Провайдеры Use Cases (Бизнес-логика мессенджера)
+		messenger.NewLoadDashboardUseCase,
+		messenger.NewOpenChatUseCase,
+		messenger.NewSendMessageUseCase,
+		messenger.NewStreamMediaChunkUseCase,
+
+		// Конструктор приложения
+		NewApp,
+	))
+	return nil, nil
+}
+</file>
+
+<file path="internal/config/config.go">
+package config
+
+import (
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/ilyakaznacheev/cleanenv"
+)
+
+type Config struct {
+	Env      string `env:"APP_ENV" env-default:"development"`
+	Log      LogConfig
+	Telegram TelegramConfig
+	Redis    RedisConfig
+}
+
+type LogConfig struct {
+	Level string `env:"LOG_LEVEL" env-default:"info"`
+	JSON  bool   `env:"LOG_JSON" env-default:"false"`
+}
+
+type TelegramConfig struct {
+	AppID   int    `env:"TG_APP_ID" env-required:"true"`
+	AppHash string `env:"TG_APP_HASH" env-required:"true"`
+}
+
+type RedisConfig struct {
+	Host     string        `env:"REDIS_HOST" env-default:"localhost"`
+	Port     string        `env:"REDIS_PORT" env-default:"6379"`
+	Password string        `env:"REDIS_PASSWORD" env-default:""`
+	DB       int           `env:"REDIS_DB" env-default:"0"`
+	Timeout  time.Duration `env:"REDIS_TIMEOUT" env-default:"5s"`
+}
+
+var (
+	instance *Config
+	once     sync.Once
+)
+
+func NewConfig() (*Config, error) {
+	var err error
+	once.Do(func() {
+		var cfg Config
+		if err = cleanenv.ReadConfig(".env", &cfg); err != nil {
+			err = cleanenv.ReadEnv(&cfg)
+		}
+		instance = &cfg
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+	return instance, nil
+}
+</file>
+
+<file path="internal/core/domain/auth_session.go">
+package domain
+
+import "time"
+
+type SessionStatus string
+
+const (
+	AWAITING_PHONE    SessionStatus = "AWAITING_PHONE"
+	AWAITING_CODE     SessionStatus = "AWAITING_CODE"
+	AWAITING_PASSWORD SessionStatus = "AWAITING_PASSWORD"
+	AUTHORIZED        SessionStatus = "AUTHORIZED"
+)
+
+type NextStep string
+
+const (
+	NextStepAwaitingPassword NextStep = "AWAITING_PASSWORD"
+	NextStepAuthorized       NextStep = "AUTHORIZED"
+)
+
+type AuthSession struct {
+	SessionToken        string
+	PhoneNumber         string
+	TelegramCodeHash    string
+	Status              SessionStatus
+	TelegramSessionData []byte
+	ExpiresAt           time.Time
+}
+</file>
+
+<file path="internal/core/domain/chat.go">
+package domain
+
+type ChatType int
+
+const (
+	DIRECT ChatType = iota
+	GROUP
+	CHANNEL
+)
+
+type Chat struct {
+	ID          int64
+	Title       string
+	Type        ChatType
+	UnreadCount int
+	LastMessage Message
+}
+</file>
+
+<file path="internal/core/domain/folder.go">
+package domain
+
+type Folder struct {
+	ID      int
+	Title   string
+	ChatIDs []int64
+}
+</file>
+
+<file path="internal/core/domain/message.go">
+package domain
+
+import "time"
+
+type Message struct {
+	ID        int64
+	ChatID    int64
+	SenderID  int64
+	Text      string
+	CreatedAt time.Time
+	HasMedia  bool
+	MediaId   string
+}
+</file>
+
+<file path="internal/core/domain/user.go">
+package domain
+
+import "github.com/google/uuid"
+
+type User struct {
+	ID         uuid.UUID
+	TelegramID int64
+	FirstName  string
+	LastName   string
+	Username   string
+	Phone      string
+	IsBot      bool
+}
+</file>
+
+<file path="internal/core/usecase/auth/dto.go">
+package auth
+
+import (
+	"strings"
+	"telegleb/internal/core/domain"
+)
+
+type RequestLoginInput struct {
+	PhoneNumber string
+}
+
+func (i RequestLoginInput) Validate() error {
+	phone := strings.TrimSpace(i.PhoneNumber)
+	if phone == "" || !strings.HasPrefix(phone, "+") {
+		return ErrInvalidPhone
+	}
+	return nil
+}
+
+type RequestLoginOutput struct {
+	SessionToken string
+}
+
+type VerifyCodeInput struct {
+	SessionToken string
+	Code         string
+}
+
+func (i VerifyCodeInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionState
+	}
+	if strings.TrimSpace(i.Code) == "" {
+		return ErrInvalidStep
+	}
+	return nil
+}
+
+type VerifyCodeOutput struct {
+	NextStep domain.NextStep
+}
+
+type VerifyPasswordInput struct {
+	SessionToken string
+	Password     string
+}
+
+func (i VerifyPasswordInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionState
+	}
+	if strings.TrimSpace(i.Password) == "" {
+		return ErrInvalidStep
+	}
+	return nil
+}
+
+type VerifyPasswordOutput struct {
+	Status string
+}
+
+type LogoutInput struct {
+	SessionToken string
+}
+
+func (i LogoutInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionState
+	}
+	return nil
+}
+</file>
+
+<file path="internal/core/usecase/auth/errors.go">
+package auth
+
+import "errors"
+
+var (
+	ErrInvalidCredentials   = errors.New("invalid credentials")
+	ErrInvalidPhone         = errors.New("invalid phone number format")
+	ErrAuthFailed           = errors.New("failed to initiate authentication")
+	ErrSessionNotFound      = errors.New("auth session not found")
+	ErrInvalidStep          = errors.New("invalid authentication step")
+	ErrInvalidSessionState  = errors.New("invalid session state for operation")
+)
+</file>
+
+<file path="internal/core/usecase/auth/logout_usecase.go">
+package auth
+
+import (
+	"context"
+	"telegleb/internal/core/usecase/session"
+)
+
+type LogoutUseCase struct {
+	authRepo    AuthRepository
+	sessionRepo session.SessionRepository
+}
+
+func NewLogoutUseCase(authRepo AuthRepository, sessionRepo session.SessionRepository) *LogoutUseCase {
+	return &LogoutUseCase{
+		authRepo:    authRepo,
+		sessionRepo: sessionRepo,
+	}
+}
+
+func (uc *LogoutUseCase) Execute(ctx context.Context, input LogoutInput) error {
+	if err := input.Validate(); err != nil {
+		return err
+	}
+
+	_, err := uc.sessionRepo.GetSessionByToken(ctx, input.SessionToken)
+	if err != nil {
+		return ErrSessionNotFound
+	}
+
+	if err := uc.authRepo.TerminateSession(ctx, input.SessionToken); err != nil {
+		return err
+	}
+
+	if err := uc.sessionRepo.DeleteSession(ctx, input.SessionToken); err != nil {
+		return err
+	}
+
+	return nil
+}
+</file>
+
+<file path="internal/core/usecase/auth/repository.go">
+package auth
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+)
+
+type AuthRepository interface {
+	// InitiateLogin отправляет код на телефон и возвращает telegram-phone-code-hash
+	InitiateLogin(ctx context.Context, session *domain.AuthSession, phoneNumber string) (string, error)
+	// SubmitCode проверяет код. Возвращает true, если нужен 2FA пароль, и false, если авторизация успешна
+	SubmitCode(ctx context.Context, session *domain.AuthSession, code string) (requiresPassword bool, error error)
+	// SubmitPassword проверяет 2FA пароль
+	SubmitPassword(ctx context.Context, session *domain.AuthSession, password string) error
+	// TerminateSession корректно закрывает соединение и очищает ресурсы
+	TerminateSession(ctx context.Context, sessionToken string) error
+}
+</file>
+
+<file path="internal/core/usecase/auth/request_login_usecase.go">
+package auth
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/session"
+	"telegleb/internal/lib/jwt"
+)
+
+type RequestLoginUseCase struct {
+	authRepo    AuthRepository
+	sessionRepo session.SessionRepository
+	jwtManager  *jwt.TokenManager
+}
+
+func NewRequestLoginUseCase(authRepo AuthRepository, sessionRepo session.SessionRepository, jwtManager *jwt.TokenManager) *RequestLoginUseCase {
+	return &RequestLoginUseCase{
+		authRepo:    authRepo,
+		sessionRepo: sessionRepo,
+		jwtManager:  jwtManager,
+	}
+}
+
+func (uc *RequestLoginUseCase) Execute(ctx context.Context, input RequestLoginInput) (RequestLoginOutput, error) {
+	if err := input.Validate(); err != nil {
+		return RequestLoginOutput{}, err
+	}
+
+	token, err := uc.jwtManager.GenerateToken(input.PhoneNumber)
+	if err != nil {
+		return RequestLoginOutput{}, err
+	}
+
+	authSession := &domain.AuthSession{
+		SessionToken: token,
+		PhoneNumber:  input.PhoneNumber,
+		Status:       domain.AWAITING_PHONE,
+	}
+
+	codeHash, err := uc.authRepo.InitiateLogin(ctx, authSession, input.PhoneNumber)
+	if err != nil {
+		return RequestLoginOutput{}, err
+	}
+
+	authSession.TelegramCodeHash = codeHash
+	authSession.Status = domain.AWAITING_CODE
+
+	if err := uc.sessionRepo.CreateSession(ctx, authSession); err != nil {
+		return RequestLoginOutput{}, err
+	}
+
+	return RequestLoginOutput{SessionToken: token}, nil
+}
+</file>
+
+<file path="internal/core/usecase/auth/verify_code_usecase.go">
+package auth
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/session"
+)
+
+type VerifyCodeUseCase struct {
+	authRepo    AuthRepository
+	sessionRepo session.SessionRepository
+}
+
+func NewVerifyCodeUseCase(authRepo AuthRepository, sessionRepo session.SessionRepository) *VerifyCodeUseCase {
+	return &VerifyCodeUseCase{
+		authRepo:    authRepo,
+		sessionRepo: sessionRepo,
+	}
+}
+
+func (uc *VerifyCodeUseCase) Execute(ctx context.Context, input VerifyCodeInput) (VerifyCodeOutput, error) {
+	if err := input.Validate(); err != nil {
+		return VerifyCodeOutput{}, err
+	}
+
+	authSession, err := uc.sessionRepo.GetSessionByToken(ctx, input.SessionToken)
+	if err != nil {
+		return VerifyCodeOutput{}, err
+	}
+
+	if authSession.Status != domain.AWAITING_CODE {
+		return VerifyCodeOutput{}, ErrInvalidSessionState
+	}
+
+	requiresPassword, err := uc.authRepo.SubmitCode(ctx, authSession, input.Code)
+	if err != nil {
+		return VerifyCodeOutput{}, err
+	}
+
+	var nextStep domain.NextStep
+	if requiresPassword {
+		authSession.Status = domain.AWAITING_PASSWORD
+		nextStep = domain.NextStepAwaitingPassword
+	} else {
+		authSession.Status = domain.AUTHORIZED
+		nextStep = domain.NextStepAuthorized
+	}
+
+	if err := uc.sessionRepo.UpdateSession(ctx, authSession); err != nil {
+		return VerifyCodeOutput{}, err
+	}
+
+	return VerifyCodeOutput{NextStep: nextStep}, nil
+}
+</file>
+
+<file path="internal/core/usecase/auth/verify_password_usecase.go">
+package auth
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/session"
+)
+
+type VerifyPasswordUseCase struct {
+	authRepo    AuthRepository
+	sessionRepo session.SessionRepository
+}
+
+func NewVerifyPasswordUseCase(authRepo AuthRepository, sessionRepo session.SessionRepository) *VerifyPasswordUseCase {
+	return &VerifyPasswordUseCase{
+		authRepo:    authRepo,
+		sessionRepo: sessionRepo,
+	}
+}
+
+func (uc *VerifyPasswordUseCase) Execute(ctx context.Context, input VerifyPasswordInput) (VerifyPasswordOutput, error) {
+	if err := input.Validate(); err != nil {
+		return VerifyPasswordOutput{}, err
+	}
+	
+	authSession, err := uc.sessionRepo.GetSessionByToken(ctx, input.SessionToken)
+	if err != nil {
+		return VerifyPasswordOutput{}, err
+	}
+
+	if authSession.Status != domain.AWAITING_PASSWORD {
+		return VerifyPasswordOutput{}, ErrInvalidSessionState
+	}
+
+	err = uc.authRepo.SubmitPassword(ctx, authSession, input.Password)
+	if err != nil {
+		return VerifyPasswordOutput{}, err
+	}
+
+	authSession.Status = domain.AUTHORIZED
+	if err := uc.sessionRepo.UpdateSession(ctx, authSession); err != nil {
+		return VerifyPasswordOutput{}, err
+	}
+
+	return VerifyPasswordOutput{Status: "OK"}, nil
+}
+</file>
+
+<file path="internal/core/usecase/chat/repository.go">
+package chat
+
+import (
+	"context"
+
+	"telegleb/internal/core/domain"
+)
+
+type ChatRepository interface {
+	GetChats(ctx context.Context, sessionToken string, limit int, offset int) ([]domain.Chat, error)
+	GetFolders(ctx context.Context, sessionToken string) ([]domain.Folder, error)
+}
+</file>
+
+<file path="internal/core/usecase/media/repository.go">
+package media
+
+import "context"
+
+type MediaRepository interface {
+	DownloadMediaLink(ctx context.Context, sessionToken string, mediaID string) (string, error)
+	DownloadMediaChunk(ctx context.Context, sessionToken string, mediaID string, offset int64, limit int) ([]byte, error)
+}
+</file>
+
+<file path="internal/core/usecase/message/repository.go">
+package message
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+)
+
+type MessageRepository interface {
+	GetChatHistory(ctx context.Context, sessionToken string, chatID string, limit int, offset int) ([]domain.Message, error)
+	SendMessage(ctx context.Context, sessionToken string, chatID string, content string) (domain.Message, error)
+}
+</file>
+
+<file path="internal/core/usecase/messenger/download_media_link_usecase.go">
+package messenger
+
+import (
+	"context"
+	"telegleb/internal/core/usecase/media"
+)
+
+type DownloadMediaLinkUseCase struct {
+	mediaRepo media.MediaRepository
+}
+
+func NewDownloadMediaLinkUseCase(mediaRepo media.MediaRepository) *DownloadMediaLinkUseCase {
+	return &DownloadMediaLinkUseCase{
+		mediaRepo: mediaRepo,
+	}
+}
+
+func (uc *DownloadMediaLinkUseCase) Execute(ctx context.Context, input DownloadMediaLinkInput) (DownloadMediaLinkOutput, error) {
+	if err := input.Validate(); err != nil {
+		return DownloadMediaLinkOutput{}, err
+	}
+
+	link, err := uc.mediaRepo.DownloadMediaLink(ctx, input.SessionToken, input.MediaID)
+	if err != nil {
+		return DownloadMediaLinkOutput{}, ErrMediaNotFound
+	}
+
+	return DownloadMediaLinkOutput{
+		Link: link,
+	}, nil
+}
+</file>
+
+<file path="internal/core/usecase/messenger/dto.go">
+package messenger
+
+import (
+	"strings"
+	"telegleb/internal/core/domain"
+)
+
+type LoadDashboardInput struct {
+	SessionToken string
+	Limit        int
+	Offset       int
+}
+
+func (i LoadDashboardInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionToken
+	}
+	if i.Limit < 0 || i.Offset < 0 {
+		return ErrInvalidPagination
+	}
+	return nil
+}
+
+type LoadDashboardOutput struct {
+	Chats   []domain.Chat
+	Folders []domain.Folder
+}
+
+type OpenChatInput struct {
+	SessionToken string
+	ChatID       string
+	Limit        int
+	Offset       int
+}
+
+func (i OpenChatInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionToken
+	}
+	if strings.TrimSpace(i.ChatID) == "" {
+		return ErrChatNotFound
+	}
+	if i.Limit < 0 || i.Offset < 0 {
+		return ErrInvalidPagination
+	}
+	return nil
+}
+
+type OpenChatOutput struct {
+	Messages []domain.Message
+}
+
+type SendMessageInput struct {
+	SessionToken string
+	ChatID       string
+	Content      string
+}
+
+func (i SendMessageInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionToken
+	}
+	if strings.TrimSpace(i.ChatID) == "" {
+		return ErrChatNotFound
+	}
+	if strings.TrimSpace(i.Content) == "" {
+		return ErrEmptyMessage
+	}
+	return nil
+}
+
+type SendMessageOutput struct {
+	Message domain.Message
+}
+
+type DownloadMediaLinkInput struct {
+	SessionToken string
+	MediaID      string
+}
+
+func (i DownloadMediaLinkInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionToken
+	}
+	if strings.TrimSpace(i.MediaID) == "" {
+		return ErrMediaNotFound
+	}
+	return nil
+}
+
+type DownloadMediaLinkOutput struct {
+	Link string
+}
+
+type StreamMediaChunkInput struct {
+	SessionToken string
+	MediaID      string
+	Offset       int64
+	Limit        int
+}
+
+func (i StreamMediaChunkInput) Validate() error {
+	if strings.TrimSpace(i.SessionToken) == "" {
+		return ErrInvalidSessionToken
+	}
+	if strings.TrimSpace(i.MediaID) == "" {
+		return ErrMediaNotFound
+	}
+	if i.Offset < 0 {
+		return ErrMediaOffset
+	}
+	if i.Limit <= 0 {
+		return ErrMediaChunkLimit
+	}
+	return nil
+}
+
+type StreamMediaChunkOutput struct {
+	Chunk []byte
+}
+</file>
+
+<file path="internal/core/usecase/messenger/errors.go">
+package messenger
+
+import "errors"
+
+var (
+	ErrChatNotFound        = errors.New("chat not found")
+	ErrMediaNotFound       = errors.New("media file not found")
+	ErrDashboardFailed     = errors.New("failed to load dashboard data")
+	ErrStreamingFailed     = errors.New("failed to stream media chunk")
+	ErrInvalidSessionToken = errors.New("invalid session token")
+	ErrInvalidPagination   = errors.New("pagination parameters cannot be negative")
+	ErrMediaOffset         = errors.New("media offset cannot be negative")
+	ErrMediaChunkLimit     = errors.New("media chunk limit must be greater than zero")
+	ErrEmptyMessage        = errors.New("message content cannot be empty")
+)
+</file>
+
+<file path="internal/core/usecase/messenger/load_dashboard_usecase.go">
+package messenger
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+	"telegleb/internal/core/usecase/chat"
+
+	"golang.org/x/sync/errgroup"
+)
+
+type LoadDashboardUseCase struct {
+	chatRepo chat.ChatRepository
+}
+
+func NewLoadDashboardUseCase(chatRepo chat.ChatRepository) *LoadDashboardUseCase {
+	return &LoadDashboardUseCase{
+		chatRepo: chatRepo,
+	}
+}
+
+func (uc *LoadDashboardUseCase) Execute(ctx context.Context, input LoadDashboardInput) (LoadDashboardOutput, error) {
+	if err := input.Validate(); err != nil {
+		return LoadDashboardOutput{}, err
+	}
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	var chats []domain.Chat
+	var folders []domain.Folder
+
+	g.Go(func() error {
+		var err error
+		chats, err = uc.chatRepo.GetChats(gCtx, input.SessionToken, input.Limit, input.Offset)
+		return err
+	})
+
+	g.Go(func() error {
+		var err error
+		folders, err = uc.chatRepo.GetFolders(gCtx, input.SessionToken)
+		return err
+	})
+
+	if err := g.Wait(); err != nil {
+		return LoadDashboardOutput{}, ErrDashboardFailed
+	}
+
+	return LoadDashboardOutput{
+		Chats:   chats,
+		Folders: folders,
+	}, nil
+}
+</file>
+
+<file path="internal/core/usecase/messenger/open_chat_usecase.go">
+package messenger
+
+import (
+	"context"
+	"telegleb/internal/core/usecase/message"
+)
+
+type OpenChatUseCase struct {
+	messageRepo message.MessageRepository
+}
+
+func NewOpenChatUseCase(messageRepo message.MessageRepository) *OpenChatUseCase {
+	return &OpenChatUseCase{
+		messageRepo: messageRepo,
+	}
+}
+
+func (uc *OpenChatUseCase) Execute(ctx context.Context, input OpenChatInput) (OpenChatOutput, error) {
+	if err := input.Validate(); err != nil {
+		return OpenChatOutput{}, err
+	}
+	
+	messages, err := uc.messageRepo.GetChatHistory(ctx, input.SessionToken, input.ChatID, input.Limit, input.Offset)
+	if err != nil {
+		return OpenChatOutput{}, err
+	}
+
+	return OpenChatOutput{
+		Messages: messages,
+	}, nil
+}
+</file>
+
+<file path="internal/core/usecase/messenger/send_message_usecase.go">
+package messenger
+
+import (
+	"context"
+	"telegleb/internal/core/usecase/message"
+)
+
+type SendMessageUseCase struct {
+	messageRepo message.MessageRepository
+}
+
+func NewSendMessageUseCase(messageRepo message.MessageRepository) *SendMessageUseCase {
+	return &SendMessageUseCase{
+		messageRepo: messageRepo,
+	}
+}
+
+func (uc *SendMessageUseCase) Execute(ctx context.Context, input SendMessageInput) (SendMessageOutput, error) {
+	if err := input.Validate(); err != nil {
+		return SendMessageOutput{}, err
+	}
+
+	msg, err := uc.messageRepo.SendMessage(ctx, input.SessionToken, input.ChatID, input.Content)
+	if err != nil {
+		return SendMessageOutput{}, err
+	}
+
+	return SendMessageOutput{
+		Message: msg,
+	}, nil
+}
+</file>
+
+<file path="internal/core/usecase/messenger/stream_media_chunk.go">
+package messenger
+
+import (
+	"context"
+	"telegleb/internal/core/usecase/media"
+)
+
+type StreamMediaChunkUseCase struct {
+	mediaRepo media.MediaRepository
+}
+
+func NewStreamMediaChunkUseCase(mediaRepo media.MediaRepository) *StreamMediaChunkUseCase {
+	return &StreamMediaChunkUseCase{
+		mediaRepo: mediaRepo,
+	}
+}
+
+func (uc *StreamMediaChunkUseCase) Execute(ctx context.Context, input StreamMediaChunkInput) (StreamMediaChunkOutput, error) {
+	if err := input.Validate(); err != nil {
+		return StreamMediaChunkOutput{}, err
+	}
+
+	chunk, err := uc.mediaRepo.DownloadMediaChunk(ctx, input.SessionToken, input.MediaID, input.Offset, input.Limit)
+	if err != nil {
+		return StreamMediaChunkOutput{}, ErrStreamingFailed
+	}
+
+	return StreamMediaChunkOutput{
+		Chunk: chunk,
+	}, nil
+}
+</file>
+
+<file path="internal/core/usecase/session/repository.go">
+package session
+
+import (
+	"context"
+	"telegleb/internal/core/domain"
+)
+
+type SessionRepository interface {
+	CreateSession(ctx context.Context, session *domain.AuthSession) error
+	GetSessionByToken(ctx context.Context, token string) (*domain.AuthSession, error)
+	UpdateSession(ctx context.Context, session *domain.AuthSession) error
+	DeleteSession(ctx context.Context, token string) error
+}
+</file>
+
+<file path="internal/lib/jwt/jwt.go">
+package jwt
+
+import (
+	"errors"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+var ErrInvalidToken = errors.New("invalid or expired token")
+
+type TokenManager struct {
+	secretKey []byte
+	ttl       time.Duration
+}
+
+func NewTokenManager(secretKey string, ttl time.Duration) *TokenManager {
+	return &TokenManager{
+		secretKey: []byte(secretKey),
+		ttl:       ttl,
+	}
+}
+
+func (tm *TokenManager) GenerateToken(sessionID string) (string, error) {
+	claims := jwt.RegisteredClaims{
+		Subject:   sessionID,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(tm.ttl)),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(tm.secretKey)
+}
+
+func (tm *TokenManager) ValidateToken(tokenStr string) (string, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return tm.secretKey, nil
+	})
+
+	if err != nil || !token.Valid {
+		return "", ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(*jwt.RegisteredClaims)
+	if !ok {
+		return "", ErrInvalidToken
+	}
+
+	return claims.Subject, nil
+}
+</file>
+
+<file path="internal/lib/logger/logger.go">
+package logger
+
+import (
+	"log/slog"
+	"os"
+	"strings"
+)
+
+func SetupLogger(levelStr string, isJSON bool) *slog.Logger {
+	var level slog.Level
+
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+	var handler slog.Handler
+
+	if isJSON {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	return slog.New(handler)
+}
+</file>
+
+<file path=".dockerignore">
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+*.log
+.env
+.env.*
+!.env.example
+
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.git
+.gitignore
+.github
+README.md
+repomix.txt
+
+.vendor/
+vendor/
+</file>
+
+<file path="Dockerfile">
+FROM golang:alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git ca-certificates && update-ca-certificates
+
+RUN ls -la
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s" \
+    -o /bin/telegleb \
+    ./cmd/app/main.go
+
+FROM alpine:latest
+
+WORKDIR /root/
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /bin/telegleb .
+
+EXPOSE 8080
+
+CMD ["./telegleb"]
+</file>
+
+<file path="go.mod">
+module telegleb
+
+go 1.26.4
+
+require (
+	github.com/google/wire v0.7.0
+	github.com/gotd/td v0.147.0
+)
+
+require (
+	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
+)
+
+require (
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/coder/websocket v1.8.14 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
+	github.com/fatih/color v1.19.0 // indirect
+	github.com/ghodss/yaml v1.0.0 // indirect
+	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/go-faster/jx v1.2.0 // indirect
+	github.com/go-faster/xor v1.0.0 // indirect
+	github.com/go-faster/yaml v0.4.6 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/uuid v1.6.0
+	github.com/gotd/ige v0.2.2 // indirect
+	github.com/gotd/neo v0.1.5 // indirect
+	github.com/ilyakaznacheev/cleanenv v1.5.0
+	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/ogen-go/ogen v1.20.3 // indirect
+	github.com/redis/go-redis/v9 v9.20.0
+	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/metric v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.28.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090 // indirect
+	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
+	rsc.io/qr v0.2.0 // indirect
+)
+</file>
+
+</files>

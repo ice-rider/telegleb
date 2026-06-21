@@ -1,0 +1,38 @@
+.folder-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.folder-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.folder-tab {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  background: #f1f1f1;
+  color: #666;
+  transition: background-color 0.12s, color 0.12s;
+  font-family: inherit;
+}
+
+.folder-tab:hover {
+  background: #e4e4e4;
+}
+
+.folder-tab--active {
+  background: #2aabee;
+  color: #fff;
+}
+
+.folder-tab--active:hover {
+  background: #229ed3;
+}

@@ -1,0 +1,66 @@
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: telegleb_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - telegleb_network
+    command: redis-server --appendonly yes
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: telegleb_backend
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=debug
+      - LOG_JSON=true
+
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TIMEOUT=5s
+
+      - JWT_SECRET=super-secret-key
+
+      - TG_APP_ID=${TG_APP_ID:-123456}
+      - TG_APP_HASH=${TG_APP_HASH:-your_app_hash_here}
+    networks:
+      - telegleb_network
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: telegleb_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - telegleb_network
+
+  proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    container_name: telegleb_proxy
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+    networks:
+      - telegleb_network
+
+volumes:
+  redis_data:
+
+networks:
+  telegleb_network:
+    driver: bridge
