@@ -34,6 +34,14 @@ export interface ChatDTO {
   LastMessage: MessageDTO;
 }
 
+export interface MessageEntityDTO {
+  offset: number;
+  length: number;
+  type: string;
+  url?: string;
+  userId?: number;
+}
+
 export interface MessageDTO {
   ID: number;
   ChatID: number;
@@ -42,6 +50,33 @@ export interface MessageDTO {
   CreatedAt: string;
   HasMedia: boolean;
   MediaId: string;
+
+  Out: boolean;
+  Mentioned: boolean;
+  Silent: boolean;
+  Post: boolean;
+  Pinned: boolean;
+  Noforwards: boolean;
+  EditDate: string;
+  Views: number;
+  Forwards: number;
+  GroupedID: number;
+  ViaBotID: number;
+  PostAuthor: string;
+  TTLPeriod: number;
+
+  ReplyToMsgID: number;
+  ReplyToPeer: number;
+
+  FwdFromName: string;
+  FwdFromDate: string;
+  FwdFromChannelID: number;
+  FwdFromUserID: number;
+
+  RepliesCount: number;
+  RepliesMaxID: number;
+
+  Entities: MessageEntityDTO[];
 }
 
 export interface FolderDTO {
@@ -62,15 +97,7 @@ function mapChat(dto: ChatDTO) {
     title: dto.Title,
     type: mapChatType(dto.Type),
     unreadCount: dto.UnreadCount,
-    lastMessage: {
-      id: dto.LastMessage.ID,
-      chatId: dto.LastMessage.ChatID,
-      senderId: dto.LastMessage.SenderID,
-      text: dto.LastMessage.Text,
-      createdAt: dto.LastMessage.CreatedAt,
-      hasMedia: dto.LastMessage.HasMedia,
-      mediaId: dto.LastMessage.MediaId,
-    },
+    lastMessage: mapMessage(dto.LastMessage),
   };
 }
 
@@ -83,6 +110,33 @@ function mapMessage(dto: MessageDTO) {
     createdAt: dto.CreatedAt,
     hasMedia: dto.HasMedia,
     mediaId: dto.MediaId,
+
+    out: dto.Out,
+    mentioned: dto.Mentioned,
+    silent: dto.Silent,
+    post: dto.Post,
+    pinned: dto.Pinned,
+    noforwards: dto.Noforwards,
+    editDate: dto.EditDate,
+    views: dto.Views,
+    forwards: dto.Forwards,
+    groupedId: dto.GroupedID,
+    viaBotId: dto.ViaBotID,
+    postAuthor: dto.PostAuthor,
+    ttlPeriod: dto.TTLPeriod,
+
+    replyToMsgId: dto.ReplyToMsgID,
+    replyToPeer: dto.ReplyToPeer,
+
+    fwdFromName: dto.FwdFromName,
+    fwdFromDate: dto.FwdFromDate,
+    fwdFromChannelId: dto.FwdFromChannelID,
+    fwdFromUserId: dto.FwdFromUserID,
+
+    repliesCount: dto.RepliesCount,
+    repliesMaxId: dto.RepliesMaxID,
+
+    entities: dto.Entities ?? [],
   };
 }
 

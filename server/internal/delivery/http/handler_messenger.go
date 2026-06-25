@@ -22,6 +22,14 @@ type chatDTO struct {
 	LastMessage messageDTO `json:"LastMessage"`
 }
 
+type messageEntityDTO struct {
+	Offset int    `json:"offset"`
+	Length int    `json:"length"`
+	Type   string `json:"type"`
+	URL    string `json:"url,omitempty"`
+	UserID int64  `json:"userId,omitempty"`
+}
+
 type messageDTO struct {
 	ID        int64  `json:"ID"`
 	ChatID    int64  `json:"ChatID"`
@@ -30,6 +38,33 @@ type messageDTO struct {
 	CreatedAt string `json:"CreatedAt"`
 	HasMedia  bool   `json:"HasMedia"`
 	MediaId   string `json:"MediaId"`
+
+	Out        bool   `json:"Out"`
+	Mentioned  bool   `json:"Mentioned"`
+	Silent     bool   `json:"Silent"`
+	Post       bool   `json:"Post"`
+	Pinned     bool   `json:"Pinned"`
+	Noforwards bool   `json:"Noforwards"`
+	EditDate   string `json:"EditDate,omitempty"`
+	Views      int    `json:"Views"`
+	Forwards   int    `json:"Forwards"`
+	GroupedID  int64  `json:"GroupedID"`
+	ViaBotID   int64  `json:"ViaBotID"`
+	PostAuthor string `json:"PostAuthor"`
+	TTLPeriod  int    `json:"TTLPeriod"`
+
+	ReplyToMsgID int64 `json:"ReplyToMsgID"`
+	ReplyToPeer  int64 `json:"ReplyToPeer"`
+
+	FwdFromName      string `json:"FwdFromName"`
+	FwdFromDate      string `json:"FwdFromDate,omitempty"`
+	FwdFromChannelID int64  `json:"FwdFromChannelID"`
+	FwdFromUserID    int64  `json:"FwdFromUserID"`
+
+	RepliesCount int   `json:"RepliesCount"`
+	RepliesMaxID int64 `json:"RepliesMaxID"`
+
+	Entities []messageEntityDTO `json:"Entities"`
 }
 
 type folderDTO struct {
@@ -76,6 +111,26 @@ func mapDomainChat(c domain.Chat) chatDTO {
 }
 
 func mapDomainMessage(m domain.Message) messageDTO {
+	editDate := ""
+	if !m.EditDate.IsZero() {
+		editDate = m.EditDate.Format("2006-01-02T15:04:05Z")
+	}
+	fwdFromDate := ""
+	if !m.FwdFromDate.IsZero() {
+		fwdFromDate = m.FwdFromDate.Format("2006-01-02T15:04:05Z")
+	}
+
+	entities := make([]messageEntityDTO, 0, len(m.Entities))
+	for _, e := range m.Entities {
+		entities = append(entities, messageEntityDTO{
+			Offset: e.Offset,
+			Length: e.Length,
+			Type:   e.Type,
+			URL:    e.URL,
+			UserID: e.UserID,
+		})
+	}
+
 	return messageDTO{
 		ID:        m.ID,
 		ChatID:    m.ChatID,
@@ -84,6 +139,33 @@ func mapDomainMessage(m domain.Message) messageDTO {
 		CreatedAt: m.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		HasMedia:  m.HasMedia,
 		MediaId:   m.MediaId,
+
+		Out:        m.Out,
+		Mentioned:  m.Mentioned,
+		Silent:     m.Silent,
+		Post:       m.Post,
+		Pinned:     m.Pinned,
+		Noforwards: m.Noforwards,
+		EditDate:   editDate,
+		Views:      m.Views,
+		Forwards:   m.Forwards,
+		GroupedID:  m.GroupedID,
+		ViaBotID:   m.ViaBotID,
+		PostAuthor: m.PostAuthor,
+		TTLPeriod:  m.TTLPeriod,
+
+		ReplyToMsgID: m.ReplyToMsgID,
+		ReplyToPeer:  m.ReplyToPeer,
+
+		FwdFromName:      m.FwdFromName,
+		FwdFromDate:      fwdFromDate,
+		FwdFromChannelID: m.FwdFromChannelID,
+		FwdFromUserID:    m.FwdFromUserID,
+
+		RepliesCount: m.RepliesCount,
+		RepliesMaxID: m.RepliesMaxID,
+
+		Entities: entities,
 	}
 }
 

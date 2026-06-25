@@ -16,6 +16,14 @@ export interface Chat {
   lastMessage: Message;
 }
 
+export interface MessageEntity {
+  offset: number;
+  length: number;
+  type: string;
+  url?: string;
+  userId?: number;
+}
+
 export interface Message {
   id: number;
   chatId: number;
@@ -24,6 +32,33 @@ export interface Message {
   createdAt: string;
   hasMedia: boolean;
   mediaId: string;
+
+  out: boolean;
+  mentioned: boolean;
+  silent: boolean;
+  post: boolean;
+  pinned: boolean;
+  noforwards: boolean;
+  editDate: string;
+  views: number;
+  forwards: number;
+  groupedId: number;
+  viaBotId: number;
+  postAuthor: string;
+  ttlPeriod: number;
+
+  replyToMsgId: number;
+  replyToPeer: number;
+
+  fwdFromName: string;
+  fwdFromDate: string;
+  fwdFromChannelId: number;
+  fwdFromUserId: number;
+
+  repliesCount: number;
+  repliesMaxId: number;
+
+  entities: MessageEntity[];
 }
 
 export interface Folder {

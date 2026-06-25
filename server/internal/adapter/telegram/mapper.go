@@ -147,6 +147,126 @@ func mapTelegramMessages(messages []tg.MessageClass) []domain.Message {
 			}
 		}
 
+		editDate := time.Time{}
+		if msg.EditDate != 0 {
+			editDate = time.Unix(int64(msg.EditDate), 0)
+		}
+
+		var replyToMsgID, replyToPeer int64
+		if msg.ReplyTo != nil {
+			if replyHeader, ok := msg.ReplyTo.(*tg.MessageReplyHeader); ok {
+				replyToMsgID = int64(replyHeader.ReplyToMsgID)
+				if replyHeader.ReplyToPeerID != nil {
+					switch p := replyHeader.ReplyToPeerID.(type) {
+					case *tg.PeerUser:
+						replyToPeer = p.UserID
+					case *tg.PeerChat:
+						replyToPeer = p.ChatID
+					case *tg.PeerChannel:
+						replyToPeer = p.ChannelID
+					}
+				}
+			}
+		}
+
+		var fwdFromName string
+		var fwdFromDate time.Time
+		var fwdFromChannelID, fwdFromUserID int64
+		if fwdFrom, ok := msg.GetFwdFrom(); ok {
+			fwdFromName = fwdFrom.FromName
+			if fwdFrom.Date != 0 {
+				fwdFromDate = time.Unix(int64(fwdFrom.Date), 0)
+			}
+			if fwdFrom.FromID != nil {
+				switch p := fwdFrom.FromID.(type) {
+				case *tg.PeerUser:
+					fwdFromUserID = p.UserID
+				case *tg.PeerChannel:
+					fwdFromChannelID = p.ChannelID
+				}
+			}
+		}
+
+		var repliesCount int
+		var repliesMaxID int64
+		if replies, ok := msg.GetReplies(); ok {
+			repliesCount = replies.Replies
+			repliesMaxID = int64(replies.MaxID)
+		}
+
+		entities := make([]domain.MessageEntity, 0, len(msg.Entities))
+		for _, e := range msg.Entities {
+			if e == nil {
+				continue
+			}
+			switch ent := e.(type) {
+			case *tg.MessageEntityURL:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "url",
+				})
+			case *tg.MessageEntityTextURL:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "text_url", URL: ent.URL,
+				})
+			case *tg.MessageEntityMentionName:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "mention_name", UserID: ent.UserID,
+				})
+			case *tg.MessageEntityBold:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "bold",
+				})
+			case *tg.MessageEntityItalic:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "italic",
+				})
+			case *tg.MessageEntityCode:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "code",
+				})
+			case *tg.MessageEntityPre:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "pre", URL: ent.Language,
+				})
+			case *tg.MessageEntityUnderline:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "underline",
+				})
+			case *tg.MessageEntityStrike:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "strike",
+				})
+			case *tg.MessageEntitySpoiler:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "spoiler",
+				})
+			case *tg.MessageEntityBlockquote:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "blockquote",
+				})
+			case *tg.MessageEntityMention:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "mention",
+				})
+			case *tg.MessageEntityHashtag:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "hashtag",
+				})
+			case *tg.MessageEntityBotCommand:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "bot_command",
+				})
+			case *tg.MessageEntityEmail:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "email",
+				})
+			case *tg.MessageEntityPhone:
+				entities = append(entities, domain.MessageEntity{
+					Offset: ent.Offset, Length: ent.Length, Type: "phone",
+				})
+			}
+		}
+
 		result = append(result, domain.Message{
 			ID:        int64(msg.ID),
 			ChatID:    chatID,
@@ -155,6 +275,33 @@ func mapTelegramMessages(messages []tg.MessageClass) []domain.Message {
 			CreatedAt: time.Unix(int64(msg.Date), 0),
 			HasMedia:  hasMedia,
 			MediaId:   mediaID,
+
+			Out:        msg.Out,
+			Mentioned:  msg.Mentioned,
+			Silent:     msg.Silent,
+			Post:       msg.Post,
+			Pinned:     msg.Pinned,
+			Noforwards: msg.Noforwards,
+			EditDate:   editDate,
+			Views:      msg.Views,
+			Forwards:   msg.Forwards,
+			GroupedID:  msg.GroupedID,
+			ViaBotID:   msg.ViaBotID,
+			PostAuthor: msg.PostAuthor,
+			TTLPeriod:  msg.TTLPeriod,
+
+			ReplyToMsgID: replyToMsgID,
+			ReplyToPeer:  replyToPeer,
+
+			FwdFromName:      fwdFromName,
+			FwdFromDate:      fwdFromDate,
+			FwdFromChannelID: fwdFromChannelID,
+			FwdFromUserID:    fwdFromUserID,
+
+			RepliesCount: repliesCount,
+			RepliesMaxID: repliesMaxID,
+
+			Entities: entities,
 		})
 	}
 
