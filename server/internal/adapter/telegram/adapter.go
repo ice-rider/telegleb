@@ -105,6 +105,12 @@ func (a *TelegramAdapter) buildClientOptions(authSession *domain.AuthSession) te
 			a.log.Warn("telegram connection dead", slog.String("error", err.Error()))
 		},
 		Logger: a.buildZapLogger(),
+		Device: telegram.DeviceConfig{
+			DeviceModel:   "Telegleb",
+			SystemVersion: "Linux",
+			AppVersion:    "0.0.1",
+			LangCode:      "ru",
+		},
 	}
 
 	if a.proxyAddr != "" && a.proxySecret != "" {
@@ -120,6 +126,8 @@ func (a *TelegramAdapter) buildClientOptions(authSession *domain.AuthSession) te
 				opts.Resolver = resolver
 			}
 		}
+	} else {
+		opts.Resolver = dcs.Plain(dcs.PlainOptions{})
 	}
 
 	return opts
@@ -186,11 +194,10 @@ func (a *TelegramAdapter) buildZapLogger() *zap.Logger {
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
 		zapcore.Lock(os.Stdout),
-		zapcore.DebugLevel,
+		zapcore.InfoLevel,
 	)
 	return zap.New(core)
 }
-
 func (a *TelegramAdapter) TerminateSession(ctx context.Context, sessionToken string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
