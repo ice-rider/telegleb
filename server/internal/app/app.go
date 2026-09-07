@@ -30,9 +30,9 @@ func NewApp(
 	httpServer *deliveryhttp.Server,
 ) *App {
 	return &App{
-		Cfg:       cfg,
-		Log:       log,
-		Rdb:       rdb,
+		Cfg:        cfg,
+		Log:        log,
+		Rdb:        rdb,
 		httpServer: httpServer,
 	}
 }

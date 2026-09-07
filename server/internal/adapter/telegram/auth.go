@@ -5,45 +5,33 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log/slog"
-	"telegleb/internal/core/domain"
 	"time"
+
+	"telegleb/internal/core/domain"
 
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 )
 
-func (a *TelegramAdapter) InitiateLogin(ctx context.Context, session *domain.AuthSession, phoneNumber string) (string, error) {
+func (a *TelegramAdapter) InitiateLogin(ctx context.Context, session *domain.AuthSession, phoneNumber string) (string, string, int, error) {
 	a.log.Info("initiating login",
 		slog.String("phone", phoneNumber),
-		slog.String("session_token", session.SessionToken[:8]+"..."),
-		slog.String("status", string(session.Status)),
+		slog.String("session_token", shortToken(session.SessionToken)),
 	)
 
 	client, err := a.GetOrCreateClient(ctx, session)
 	if err != nil {
-		a.log.Error("failed to get client for login",
-			slog.String("phone", phoneNumber),
-			slog.String("error", err.Error()),
-		)
-		return "", fmt.Errorf("%w: %v", ErrClientInitFailed, err)
+		a.log.Error("failed to get client for login", slog.String("error", err.Error()))
+		return "", "", 0, fmt.Errorf("%w: %v", ErrClientInitFailed, err)
 	}
 
-	api := client.API()
-	a.log.Info("sending auth code to Telegram",
-		slog.String("phone", phoneNumber),
-		slog.Int("app_id", a.appID),
-		slog.Bool("has_proxy", a.proxyAddr != ""),
-	)
-
 	start := time.Now()
-	res, err := api.AuthSendCode(ctx, &tg.AuthSendCodeRequest{
+	res, err := client.API().AuthSendCode(ctx, &tg.AuthSendCodeRequest{
 		PhoneNumber: phoneNumber,
 		APIID:       a.appID,
 		APIHash:     a.appHash,
-		Settings: tg.CodeSettings{
-			AllowAppHash: true,
-		},
+		Settings:    tg.CodeSettings{AllowAppHash: true},
 	})
 	elapsed := time.Since(start)
 
@@ -53,137 +41,109 @@ func (a *TelegramAdapter) InitiateLogin(ctx context.Context, session *domain.Aut
 			slog.String("error", err.Error()),
 			slog.Duration("elapsed", elapsed),
 		)
-		return "", fmt.Errorf("%w: %v", ErrTelegramSendCode, err)
+		return "", "", 0, wrapTelegram(err, ErrTelegramSendCode)
 	}
 
-	switch codeType := res.(type) {
-	case *tg.AuthSentCode:
-		deliveryMethod := fmt.Sprintf("%T", codeType.Type)
-		a.log.Info("auth code sent successfully",
-			slog.String("phone", phoneNumber),
-			slog.Duration("elapsed", elapsed),
-			slog.String("delivery_method", deliveryMethod),
-			slog.String("phone_code_hash", codeType.PhoneCodeHash),
-		)
-		return codeType.PhoneCodeHash, nil
+	sent, ok := res.(*tg.AuthSentCode)
+	if !ok {
+		a.log.Error("unexpected response type on send code", slog.String("type", fmt.Sprintf("%T", res)))
+		return "", "", 0, ErrUnexpectedCodeType
+	}
+
+	codeType := mapSentCodeType(sent.Type)
+	timeout, _ := sent.GetTimeout()
+
+	a.log.Info("auth code sent",
+		slog.String("phone", phoneNumber),
+		slog.Duration("elapsed", elapsed),
+		slog.String("code_type", codeType),
+	)
+	return sent.PhoneCodeHash, codeType, timeout, nil
+}
+
+func mapSentCodeType(t tg.AuthSentCodeTypeClass) string {
+	switch t.(type) {
+	case *tg.AuthSentCodeTypeApp:
+		return "app"
+	case *tg.AuthSentCodeTypeSMS, *tg.AuthSentCodeTypeSMSWord, *tg.AuthSentCodeTypeSMSPhrase:
+		return "sms"
+	case *tg.AuthSentCodeTypeCall:
+		return "call"
+	case *tg.AuthSentCodeTypeFlashCall:
+		return "flashCall"
+	case *tg.AuthSentCodeTypeMissedCall:
+		return "missedCall"
+	case *tg.AuthSentCodeTypeFragmentSMS:
+		return "fragmentSms"
+	case *tg.AuthSentCodeTypeEmailCode:
+		return "email"
 	default:
-		a.log.Error("unexpected response type on send code",
-			slog.String("phone", phoneNumber),
-			slog.String("response_type", fmt.Sprintf("%T", res)),
-		)
-		return "", ErrUnexpectedCodeType
+		return "unknown"
 	}
 }
 
 func (a *TelegramAdapter) SubmitCode(ctx context.Context, session *domain.AuthSession, code string) (bool, error) {
 	a.log.Info("submitting auth code",
 		slog.String("phone", session.PhoneNumber),
-		slog.Int("code_length", len(code)),
 		slog.Bool("has_code_hash", session.TelegramCodeHash != ""),
 	)
 
 	client, err := a.GetOrCreateClient(ctx, session)
 	if err != nil {
-		a.log.Error("failed to get client for code submission",
-			slog.String("phone", session.PhoneNumber),
-			slog.String("error", err.Error()),
-		)
 		return false, fmt.Errorf("%w: %v", ErrClientInitFailed, err)
 	}
 
-	api := client.API()
-
-	start := time.Now()
-	res, err := api.AuthSignIn(ctx, &tg.AuthSignInRequest{
+	res, err := client.API().AuthSignIn(ctx, &tg.AuthSignInRequest{
 		PhoneNumber:   session.PhoneNumber,
 		PhoneCodeHash: session.TelegramCodeHash,
 		PhoneCode:     code,
 	})
-	elapsed := time.Since(start)
-
 	if err != nil {
 		if tgerr.Is(err, ErrCodeSessionPasswordNeeded) {
-			a.log.Info("2FA password required",
-				slog.String("phone", session.PhoneNumber),
-				slog.Duration("elapsed", elapsed),
-			)
+			a.log.Info("2FA password required", slog.String("phone", session.PhoneNumber))
 			return true, nil
 		}
-		a.log.Error("failed to sign in with code",
-			slog.String("phone", session.PhoneNumber),
-			slog.String("error", err.Error()),
-			slog.Duration("elapsed", elapsed),
-		)
-		return false, fmt.Errorf("%w: %v", ErrTelegramSignIn, err)
+		a.log.Error("failed to sign in with code", slog.String("error", err.Error()))
+		return false, wrapTelegram(err, ErrTelegramSignIn)
 	}
 
-	switch r := res.(type) {
-	case *tg.AuthAuthorization:
-		a.log.Info("sign in successful",
-			slog.String("phone", session.PhoneNumber),
-			slog.Duration("elapsed", elapsed),
-			slog.Any("user_id", r.User),
-		)
-		return false, nil
-	default:
-		a.log.Error("unexpected response type on sign in",
-			slog.String("phone", session.PhoneNumber),
-			slog.String("response_type", fmt.Sprintf("%T", res)),
-			slog.Duration("elapsed", elapsed),
-		)
+	if _, ok := res.(*tg.AuthAuthorization); !ok {
 		return false, ErrUnexpectedSignInType
 	}
+
+	a.log.Info("sign in successful", slog.String("phone", session.PhoneNumber))
+	return false, nil
 }
 
 func (a *TelegramAdapter) SubmitPassword(ctx context.Context, session *domain.AuthSession, password string) error {
-	a.log.Info("submitting 2FA password",
-		slog.String("phone", session.PhoneNumber),
-		slog.Int("password_length", len(password)),
-	)
+	a.log.Info("submitting 2FA password", slog.String("phone", session.PhoneNumber))
 
 	activeClient, err := a.GetClient(ctx, session.SessionToken)
 	if err != nil {
-		a.log.Error("failed to get client for password submission",
-			slog.String("phone", session.PhoneNumber),
-			slog.String("error", err.Error()),
-		)
 		return fmt.Errorf("%w: %v", ErrClientInitFailed, err)
 	}
 
 	authClient := auth.NewClient(activeClient.API, rand.Reader, a.appID, a.appHash)
-
-	start := time.Now()
-	_, err = authClient.Password(ctx, password)
-	elapsed := time.Since(start)
-
-	if err != nil {
-		a.log.Error("invalid 2FA password",
-			slog.String("phone", session.PhoneNumber),
-			slog.String("error", err.Error()),
-			slog.Duration("elapsed", elapsed),
-		)
-		return fmt.Errorf("%w: %v", ErrInvalid2FAPassword, err)
+	if _, err := authClient.Password(ctx, password); err != nil {
+		a.log.Error("invalid 2FA password", slog.String("error", err.Error()))
+		return wrapTelegram(err, ErrInvalid2FAPassword)
 	}
 
-	a.log.Info("2FA password verified successfully",
-		slog.String("phone", session.PhoneNumber),
-		slog.Duration("elapsed", elapsed),
-	)
-	session.Status = domain.AUTHORIZED
-	session.ExpiresAt = time.Now().Add(24 * time.Hour)
-
-	if err := a.sessionRepo.UpdateSession(ctx, session); err != nil {
-		a.log.Error("failed to update session after password verification",
-			slog.String("phone", session.PhoneNumber),
-			slog.String("error", err.Error()),
-		)
-		return fmt.Errorf("failed to update session after password verification: %w", err)
-	}
-
-	a.log.Info("session updated after 2FA verification",
-		slog.String("phone", session.PhoneNumber),
-		slog.Time("expires_at", session.ExpiresAt),
-	)
-
+	a.log.Info("2FA password verified", slog.String("phone", session.PhoneNumber))
 	return nil
+}
+
+func (a *TelegramAdapter) GetMe(ctx context.Context, sessionToken string) (domain.Me, error) {
+	client, err := a.GetClient(ctx, sessionToken)
+	if err != nil {
+		return domain.Me{}, err
+	}
+	return fetchMe(ctx, client.API)
+}
+
+func shortToken(token string) string {
+	if len(token) <= 8 {
+		return "..."
+	}
+	return token[:8] + "..."
 }

@@ -1,121 +1,113 @@
 package messenger
 
 import (
+	"hash/fnv"
 	"strings"
+
 	"telegleb/internal/core/domain"
 )
+
+const (
+	defaultPageLimit = 30
+	maxPageLimit     = 100
+)
+
+// clampLimit защищает и от нуля (Telegram вернул бы пусто), и от запроса
+// заведомо большей страницы, чем отдаёт API.
+func clampLimit(limit int) int {
+	switch {
+	case limit <= 0:
+		return defaultPageLimit
+	case limit > maxPageLimit:
+		return maxPageLimit
+	default:
+		return limit
+	}
+}
 
 type LoadDashboardInput struct {
 	SessionToken string
 	Limit        int
-	Offset       int
-}
-
-func (i LoadDashboardInput) Validate() error {
-	if strings.TrimSpace(i.SessionToken) == "" {
-		return ErrInvalidSessionToken
-	}
-	if i.Limit < 0 || i.Offset < 0 {
-		return ErrInvalidPagination
-	}
-	return nil
+	Cursor       string
 }
 
 type LoadDashboardOutput struct {
-	Chats      []domain.Chat
-	Folders    []domain.Folder
-	OwnUserID  int64
+	Dashboard domain.Dashboard
 }
 
 type OpenChatInput struct {
 	SessionToken string
-	ChatID       string
+	ChatRef      string
 	Limit        int
-	Offset       int
+	BeforeID     int
 }
 
-func (i OpenChatInput) Validate() error {
-	if strings.TrimSpace(i.SessionToken) == "" {
-		return ErrInvalidSessionToken
+func (i OpenChatInput) Peer() (domain.Peer, error) {
+	peer, err := domain.ParsePeer(i.ChatRef)
+	if err != nil {
+		return domain.Peer{}, ErrInvalidPeer
 	}
-	if strings.TrimSpace(i.ChatID) == "" {
-		return ErrChatNotFound
-	}
-	if i.Limit < 0 || i.Offset < 0 {
-		return ErrInvalidPagination
-	}
-	return nil
+	return peer, nil
 }
 
 type OpenChatOutput struct {
-	Messages []domain.Message
+	Messages     []domain.Message
+	NextBeforeID int
 }
 
 type SendMessageInput struct {
 	SessionToken string
-	ChatID       string
-	Content      string
+	ChatRef      string
+	Text         string
+	RandomID     string
 }
 
 func (i SendMessageInput) Validate() error {
-	if strings.TrimSpace(i.SessionToken) == "" {
-		return ErrInvalidSessionToken
-	}
-	if strings.TrimSpace(i.ChatID) == "" {
-		return ErrChatNotFound
-	}
-	if strings.TrimSpace(i.Content) == "" {
+	if strings.TrimSpace(i.Text) == "" {
 		return ErrEmptyMessage
 	}
 	return nil
+}
+
+func (i SendMessageInput) Peer() (domain.Peer, error) {
+	peer, err := domain.ParsePeer(i.ChatRef)
+	if err != nil {
+		return domain.Peer{}, ErrInvalidPeer
+	}
+	return peer, nil
+}
+
+// randomID превращает клиентский ключ идемпотентности в int64, который ждёт
+// MTProto. Одинаковый ключ даёт одинаковое число, поэтому повторная отправка
+// не создаёт дубль.
+func (i SendMessageInput) randomID() int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(i.RandomID))
+	return int64(h.Sum64() >> 1)
 }
 
 type SendMessageOutput struct {
 	Message domain.Message
 }
 
-type DownloadMediaLinkInput struct {
+type StreamMediaInput struct {
 	SessionToken string
-	MediaID      string
-}
-
-func (i DownloadMediaLinkInput) Validate() error {
-	if strings.TrimSpace(i.SessionToken) == "" {
-		return ErrInvalidSessionToken
-	}
-	if strings.TrimSpace(i.MediaID) == "" {
-		return ErrMediaNotFound
-	}
-	return nil
-}
-
-type DownloadMediaLinkOutput struct {
-	Link string
-}
-
-type StreamMediaChunkInput struct {
-	SessionToken string
-	MediaID      string
+	MediaRef     string
 	Offset       int64
 	Limit        int
 }
 
-func (i StreamMediaChunkInput) Validate() error {
-	if strings.TrimSpace(i.SessionToken) == "" {
-		return ErrInvalidSessionToken
-	}
-	if strings.TrimSpace(i.MediaID) == "" {
-		return ErrMediaNotFound
-	}
-	if i.Offset < 0 {
-		return ErrMediaOffset
-	}
-	if i.Limit <= 0 {
-		return ErrMediaChunkLimit
+func (i StreamMediaInput) Validate() error {
+	if i.Offset < 0 || i.Limit <= 0 {
+		return ErrInvalidRange
 	}
 	return nil
 }
 
-type StreamMediaChunkOutput struct {
-	Chunk []byte
+func (i StreamMediaInput) Ref() (domain.MediaRef, error) {
+	ref, err := domain.ParseMediaRef(i.MediaRef)
+	if err != nil {
+		return domain.MediaRef{}, ErrInvalidMediaRef
+	}
+	return ref, nil
 }

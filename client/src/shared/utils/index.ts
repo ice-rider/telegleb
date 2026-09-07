@@ -1,1 +1,2 @@
-export { formatTime, formatDate, formatLastMessage } from "./formatDate";
+export { formatTime, formatDate, formatDayLabel, formatLastMessage } from "./formatDate";
+export { errorMessage } from "./errorMessage";

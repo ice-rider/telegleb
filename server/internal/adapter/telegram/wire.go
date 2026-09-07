@@ -1,8 +1,9 @@
 package telegram
 
 import (
-	"github.com/google/wire"
 	"telegleb/internal/core/usecase/auth"
+
+	"github.com/google/wire"
 )
 
 var ProviderSet = wire.NewSet(

@@ -8,7 +8,9 @@ import (
 	"telegleb/internal/config"
 	"telegleb/internal/core/usecase/auth"
 	"telegleb/internal/core/usecase/messenger"
+	"telegleb/internal/lib/jwt"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 )
 
@@ -16,36 +18,45 @@ type Server struct {
 	server *fasthttp.Server
 	cfg    *config.Config
 	log    *slog.Logger
+	redis  *redis.Client
+	tokens *jwt.TokenManager
 
-	requestLoginUC   *auth.RequestLoginUseCase
+	requestCodeUC    *auth.RequestCodeUseCase
 	verifyCodeUC     *auth.VerifyCodeUseCase
 	verifyPasswordUC *auth.VerifyPasswordUseCase
+	sessionUC        *auth.SessionUseCase
 	logoutUC         *auth.LogoutUseCase
 
 	loadDashboardUC *messenger.LoadDashboardUseCase
 	openChatUC      *messenger.OpenChatUseCase
 	sendMessageUC   *messenger.SendMessageUseCase
-	streamMediaUC   *messenger.StreamMediaChunkUseCase
+	streamMediaUC   *messenger.StreamMediaUseCase
 }
 
 func NewServer(
 	cfg *config.Config,
 	log *slog.Logger,
-	requestLoginUC *auth.RequestLoginUseCase,
+	rdb *redis.Client,
+	tokens *jwt.TokenManager,
+	requestCodeUC *auth.RequestCodeUseCase,
 	verifyCodeUC *auth.VerifyCodeUseCase,
 	verifyPasswordUC *auth.VerifyPasswordUseCase,
+	sessionUC *auth.SessionUseCase,
 	logoutUC *auth.LogoutUseCase,
 	loadDashboardUC *messenger.LoadDashboardUseCase,
 	openChatUC *messenger.OpenChatUseCase,
 	sendMessageUC *messenger.SendMessageUseCase,
-	streamMediaUC *messenger.StreamMediaChunkUseCase,
+	streamMediaUC *messenger.StreamMediaUseCase,
 ) *Server {
 	s := &Server{
 		cfg:              cfg,
 		log:              log,
-		requestLoginUC:   requestLoginUC,
+		redis:            rdb,
+		tokens:           tokens,
+		requestCodeUC:    requestCodeUC,
 		verifyCodeUC:     verifyCodeUC,
 		verifyPasswordUC: verifyPasswordUC,
+		sessionUC:        sessionUC,
 		logoutUC:         logoutUC,
 		loadDashboardUC:  loadDashboardUC,
 		openChatUC:       openChatUC,
@@ -53,19 +64,19 @@ func NewServer(
 		streamMediaUC:    streamMediaUC,
 	}
 
-	handler := s.setupRouter()
 	s.server = &fasthttp.Server{
-		Handler:            middlewareRecover(middlewareCORS(handler)),
-		ReadBufferSize:    4096,
-		WriteBufferSize:   4096,
-		DisableHeaderNamesNormalizing: true,
+		Handler:            middlewareRecover(log, middlewareLogger(log, s.setupRouter())),
+		ReadBufferSize:     8192,
+		WriteBufferSize:    8192,
+		StreamRequestBody:  false,
+		MaxRequestBodySize: 4 * 1024 * 1024,
 	}
 
 	return s
 }
 
 func (s *Server) ListenAndServe(ctx context.Context) error {
-	addr := ":8080"
+	addr := s.Addr()
 	s.log.Info("http server starting", slog.String("addr", addr))
 
 	errCh := make(chan error, 1)
@@ -90,5 +101,5 @@ func (s *Server) Shutdown() {
 }
 
 func (s *Server) Addr() string {
-	return fmt.Sprintf(":%s", "8080")
+	return fmt.Sprintf(":%s", s.cfg.HTTP.Port)
 }

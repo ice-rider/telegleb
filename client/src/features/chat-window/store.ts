@@ -1,93 +1,90 @@
-import { createSignal, createMemo } from "solid-js";
-import { api } from "../../core/api";
-import type { Message } from "../../types";
+import { createMemo, createSignal } from "solid-js";
+import { api } from "~/core/api";
+import { errorMessage, formatDayLabel } from "~/shared/utils";
+import type { Chat, Message } from "~/types";
 
+// Активный чат хранится ровно в одном месте. Раньше он дублировался в App и в
+// сторе, и две копии расходились.
+const [activeChat, setActiveChat] = createSignal<Chat | null>(null);
 const [messages, setMessages] = createSignal<Message[]>([]);
-const [activeChatId, setActiveChatId] = createSignal<number | null>(null);
-const [chatTitle, setChatTitle] = createSignal("");
 const [isLoading, setIsLoading] = createSignal(false);
 const [isSending, setIsSending] = createSignal(false);
 const [error, setError] = createSignal<string | null>(null);
 
-let currentOwnUserId = 0;
+function randomId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
-export const useChatWindow = () => {
-  async function openChat(chatId: number, title: string, ownUserId: number) {
-    setActiveChatId(chatId);
-    setChatTitle(title);
-    currentOwnUserId = ownUserId;
+export function useChatWindow() {
+  /**
+   * Загрузка привязана к явному открытию чата, а не к монтированию компонента:
+   * не-keyed <Show> не пересоздаёт потомка при переходе между чатами, поэтому
+   * onMount второй раз не срабатывал и в новом чате оставались старые сообщения.
+   */
+  async function openChat(chat: Chat) {
+    setActiveChat(chat);
     setMessages([]);
-    setIsLoading(true);
     setError(null);
+    setIsLoading(true);
     try {
-      const msgs = await api.openChat(chatId, 50, 0);
-      setMessages(msgs);
-    } catch (e: any) {
-      setError(e.message || "Ошибка загрузки сообщений");
+      const res = await api.history(chat);
+      // Ответ мог прийти после того, как пользователь открыл другой чат.
+      if (activeChat()?.ref !== chat.ref) return;
+      setMessages(res.messages);
+    } catch (err) {
+      if (activeChat()?.ref !== chat.ref) return;
+      setError(errorMessage(err));
     } finally {
-      setIsLoading(false);
+      if (activeChat()?.ref === chat.ref) setIsLoading(false);
     }
   }
 
-  async function sendMessage(content: string) {
-    const chatId = activeChatId();
-    if (!chatId || !content.trim()) return;
+  function closeChat() {
+    setActiveChat(null);
+    setMessages([]);
+    setError(null);
+  }
+
+  async function sendMessage(text: string) {
+    const chat = activeChat();
+    const trimmed = text.trim();
+    if (!chat || !trimmed) return;
+
     setIsSending(true);
     try {
-      const msg = await api.sendMessage(chatId, content.trim());
-      setMessages((prev) => [...prev, msg]);
-    } catch (e: any) {
-      setError(e.message || "Ошибка отправки");
+      const message = await api.sendMessage(chat, trimmed, randomId());
+      if (activeChat()?.ref !== chat.ref) return;
+      setMessages((prev) => [...prev, message]);
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setIsSending(false);
     }
   }
 
-  function closeChat() {
-    setActiveChatId(null);
-    setMessages([]);
-    setChatTitle("");
-  }
-
   const groupedMessages = createMemo(() => {
-    const msgs = messages();
     const groups: { date: string; messages: Message[] }[] = [];
-    let currentDate = "";
-
-    for (const msg of msgs) {
-      const d = new Date(msg.createdAt);
-      const dateKey = d.toLocaleDateString("ru-RU", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      if (dateKey !== currentDate) {
-        currentDate = dateKey;
-        groups.push({ date: dateKey, messages: [msg] });
+    for (const msg of messages()) {
+      const label = formatDayLabel(msg.createdAt);
+      const last = groups[groups.length - 1];
+      if (last && last.date === label) {
+        last.messages.push(msg);
       } else {
-        groups[groups.length - 1].messages.push(msg);
+        groups.push({ date: label, messages: [msg] });
       }
     }
-
     return groups;
   });
 
-  function isOwnMessage(senderId: number): boolean {
-    return senderId === currentOwnUserId;
-  }
-
   return {
+    activeChat,
     messages,
     groupedMessages,
-    activeChatId,
-    chatTitle,
     isLoading,
     isSending,
     error,
     openChat,
-    sendMessage,
     closeChat,
-    isOwnMessage,
+    sendMessage,
   };
-};
+}

@@ -10,31 +10,13 @@ import (
 	"telegleb/internal/adapter/repository/session"
 	"telegleb/internal/adapter/telegram"
 	"telegleb/internal/config"
-	deliveryhttp "telegleb/internal/delivery/http"
 	"telegleb/internal/core/usecase/auth"
 	"telegleb/internal/core/usecase/messenger"
+	"telegleb/internal/delivery/http"
 	"telegleb/internal/lib/jwt"
 )
 
-func provideTelegramAppID(cfg *config.Config) int {
-	return cfg.Telegram.AppID
-}
-
-func provideTelegramAppHash(cfg *config.Config) string {
-	return cfg.Telegram.AppHash
-}
-
-func provideTelegramProxyAddr(cfg *config.Config) string {
-	return cfg.Telegram.ProxyAddr
-}
-
-func provideTelegramProxySecret(cfg *config.Config) string {
-	return cfg.Telegram.ProxySecret
-}
-
-func provideJWTManager(cfg *config.Config) *jwt.TokenManager {
-	return jwt.NewTokenManager(cfg.JWT.Secret, cfg.JWT.TTL)
-}
+// Injectors from wire.go:
 
 func InitApp() (*App, error) {
 	configConfig, err := config.NewConfig()
@@ -46,16 +28,14 @@ func InitApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	int2 := provideTelegramAppID(configConfig)
-	string2 := provideTelegramAppHash(configConfig)
-	string3 := provideTelegramProxyAddr(configConfig)
-	string4 := provideTelegramProxySecret(configConfig)
-	sessionRepository := session.NewRedisSessionRepository(client)
-	telegramAdapter := telegram.NewTelegramAdapter(int2, string2, string3, string4, sessionRepository, logger)
 	tokenManager := provideJWTManager(configConfig)
-	requestLoginUseCase := auth.NewRequestLoginUseCase(telegramAdapter, sessionRepository, tokenManager)
+	telegramConfig := provideTelegramConfig(configConfig)
+	sessionRepository := session.NewRedisSessionRepository(client)
+	telegramAdapter := telegram.NewTelegramAdapter(telegramConfig, sessionRepository, logger)
+	requestCodeUseCase := auth.NewRequestCodeUseCase(telegramAdapter, sessionRepository, tokenManager)
 	verifyCodeUseCase := auth.NewVerifyCodeUseCase(telegramAdapter, sessionRepository)
 	verifyPasswordUseCase := auth.NewVerifyPasswordUseCase(telegramAdapter, sessionRepository)
+	sessionUseCase := auth.NewSessionUseCase(telegramAdapter, sessionRepository)
 	logoutUseCase := auth.NewLogoutUseCase(telegramAdapter, sessionRepository)
 	chatRepository := telegram.NewTelegramChatRepository(telegramAdapter)
 	loadDashboardUseCase := messenger.NewLoadDashboardUseCase(chatRepository)
@@ -63,8 +43,23 @@ func InitApp() (*App, error) {
 	openChatUseCase := messenger.NewOpenChatUseCase(messageRepository)
 	sendMessageUseCase := messenger.NewSendMessageUseCase(messageRepository)
 	mediaRepository := telegram.NewTelegramMediaRepository(telegramAdapter)
-	streamMediaChunkUseCase := messenger.NewStreamMediaChunkUseCase(mediaRepository)
-	server := deliveryhttp.NewServer(configConfig, logger, requestLoginUseCase, verifyCodeUseCase, verifyPasswordUseCase, logoutUseCase, loadDashboardUseCase, openChatUseCase, sendMessageUseCase, streamMediaChunkUseCase)
+	streamMediaUseCase := messenger.NewStreamMediaUseCase(mediaRepository)
+	server := http.NewServer(configConfig, logger, client, tokenManager, requestCodeUseCase, verifyCodeUseCase, verifyPasswordUseCase, sessionUseCase, logoutUseCase, loadDashboardUseCase, openChatUseCase, sendMessageUseCase, streamMediaUseCase)
 	app := NewApp(configConfig, logger, client, server)
 	return app, nil
+}
+
+// wire.go:
+
+func provideTelegramConfig(cfg *config.Config) telegram.Config {
+	return telegram.Config{
+		AppID:       cfg.Telegram.AppID,
+		AppHash:     cfg.Telegram.AppHash,
+		ProxyAddr:   cfg.Telegram.ProxyAddr,
+		ProxySecret: cfg.Telegram.ProxySecret,
+	}
+}
+
+func provideJWTManager(cfg *config.Config) *jwt.TokenManager {
+	return jwt.NewTokenManager(cfg.JWT.Secret, cfg.JWT.TTL)
 }

@@ -69,3 +69,11 @@ body {
   font-size: 16px;
   margin: 0;
 }
+
+.app__boot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #fff;
+}

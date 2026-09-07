@@ -5,17 +5,17 @@ import "time"
 type SessionStatus string
 
 const (
-	AWAITING_PHONE    SessionStatus = "AWAITING_PHONE"
-	AWAITING_CODE     SessionStatus = "AWAITING_CODE"
-	AWAITING_PASSWORD SessionStatus = "AWAITING_PASSWORD"
-	AUTHORIZED        SessionStatus = "AUTHORIZED"
+	StatusAwaitingCode     SessionStatus = "AWAITING_CODE"
+	StatusAwaitingPassword SessionStatus = "AWAITING_PASSWORD"
+	StatusAuthorized       SessionStatus = "AUTHORIZED"
 )
 
 type NextStep string
 
 const (
-	NextStepAwaitingPassword NextStep = "AWAITING_PASSWORD"
-	NextStepAuthorized       NextStep = "AUTHORIZED"
+	NextStepCode     NextStep = "code"
+	NextStepPassword NextStep = "password"
+	NextStepDone     NextStep = "done"
 )
 
 type AuthSession struct {

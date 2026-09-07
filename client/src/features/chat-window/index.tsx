@@ -1,33 +1,30 @@
-import { Show, For, onMount, createEffect } from "solid-js";
-import { useChatWindow } from "./store";
-import { MessageItem } from "./components/MessageItem";
+import { For, Show, createEffect } from "solid-js";
+import { Loader } from "~/shared/components";
+import type { Chat } from "~/types";
 import { MessageInput } from "./components/MessageInput";
-import { Loader } from "../../shared/components";
+import { MessageItem } from "./components/MessageItem";
+import { useChatWindow } from "./store";
 import "./ChatWindow.css";
 
+export { useChatWindow } from "./store";
+
 interface ChatWindowProps {
-  chatId: number;
-  chatTitle: string;
-  ownUserId: number;
+  chat: Chat;
   onClose: () => void;
 }
 
 export function ChatWindow(props: ChatWindowProps) {
-  const { groupedMessages, isLoading, isSending, openChat, sendMessage, isOwnMessage } =
-    useChatWindow();
+  const { groupedMessages, isLoading, isSending, error, sendMessage } = useChatWindow();
 
   let scrollRef!: HTMLDivElement;
 
-  onMount(() => {
-    openChat(props.chatId, props.chatTitle, props.ownUserId);
-  });
-
   createEffect(() => {
     groupedMessages();
-    if (scrollRef) {
-      scrollRef.scrollTop = scrollRef.scrollHeight;
-    }
+    if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
   });
+
+  // Имя отправителя нужно только там, где собеседников больше одного.
+  const showSender = () => props.chat.type !== "direct";
 
   return (
     <div class="chat-window">
@@ -35,18 +32,15 @@ export function ChatWindow(props: ChatWindowProps) {
         <button class="chat-window__back" onClick={props.onClose}>
           ←
         </button>
-        <h3 class="chat-window__title">{props.chatTitle}</h3>
+        <h3 class="chat-window__title">{props.chat.title}</h3>
       </div>
 
       <div class="chat-window__messages" ref={scrollRef}>
-        <Show
-          when={!isLoading()}
-          fallback={
-            <div class="chat-window__loader">
-              <Loader />
-            </div>
-          }
-        >
+        <Show when={!isLoading()} fallback={<div class="chat-window__loader"><Loader /></div>}>
+          <Show when={error()}>
+            {(message) => <div class="chat-window__error">{message()}</div>}
+          </Show>
+
           <For each={groupedMessages()}>
             {(group) => (
               <>
@@ -54,17 +48,13 @@ export function ChatWindow(props: ChatWindowProps) {
                   <span>{group.date}</span>
                 </div>
                 <For each={group.messages}>
-                  {(msg) => (
-                    <MessageItem
-                      message={msg}
-                      isOwn={isOwnMessage(msg.senderId)}
-                    />
-                  )}
+                  {(msg) => <MessageItem message={msg} showSender={showSender()} />}
                 </For>
               </>
             )}
           </For>
-          <Show when={groupedMessages().length === 0}>
+
+          <Show when={!error() && groupedMessages().length === 0}>
             <div class="chat-window__empty">Нет сообщений</div>
           </Show>
         </Show>

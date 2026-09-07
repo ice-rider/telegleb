@@ -1,20 +1,16 @@
 import { Show, createSignal } from "solid-js";
-import { Button } from "../../../shared/components";
-import { Input } from "../../../shared/components";
-import { Loader } from "../../../shared/components";
+import { Button, Input, Loader } from "~/shared/components";
 import { useAuth } from "../store";
 import "./PhoneForm.css";
 
 export function PhoneForm() {
-  const { state, requestLogin } = useAuth();
+  const { isLoading, error, requestCode } = useAuth();
   const [phone, setPhone] = createSignal("");
 
   function handleSubmit(e: Event) {
     e.preventDefault();
-    const p = phone().trim();
-    if (p && p.startsWith("+")) {
-      requestLogin(p);
-    }
+    const value = phone().trim();
+    if (value) requestCode(value);
   }
 
   return (
@@ -27,13 +23,13 @@ export function PhoneForm() {
       <Input
         label="Номер телефона"
         type="tel"
-        placeholder="+7 900 123 45 67"
+        placeholder="+79001234567"
         value={phone()}
         onInput={(e) => setPhone(e.currentTarget.value)}
-        error={state().error ?? undefined}
+        error={error() ?? undefined}
       />
-      <Button type="submit" fullWidth disabled={state().isLoading || !phone()}>
-        <Show when={!state().isLoading} fallback={<Loader size="sm" />}>
+      <Button type="submit" fullWidth disabled={isLoading() || !phone()}>
+        <Show when={!isLoading()} fallback={<Loader size="sm" />}>
           Получить код
         </Show>
       </Button>

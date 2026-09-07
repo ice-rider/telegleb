@@ -1,148 +1,153 @@
 package http
 
 import (
-	"errors"
-	"log/slog"
 	"telegleb/internal/core/usecase/auth"
 
 	"github.com/valyala/fasthttp"
 )
 
-type requestLoginRequest struct {
-	PhoneNumber string
+type requestCodeRequest struct {
+	Phone string `json:"phone"`
 }
 
-type requestLoginResponse struct {
+type requestCodeResponse struct {
 	SessionToken string `json:"sessionToken"`
+	NextStep     string `json:"nextStep"`
+	CodeType     string `json:"codeType"`
+	Timeout      int    `json:"timeout,omitempty"`
 }
 
 type verifyCodeRequest struct {
-	SessionToken string
-	Code         string
-}
-
-type verifyCodeResponse struct {
-	NextStep string `json:"nextStep"`
+	Code string `json:"code"`
 }
 
 type verifyPasswordRequest struct {
-	SessionToken string
-	Password     string
+	Password string `json:"password"`
 }
 
-type verifyPasswordResponse struct {
+type authStepResponse struct {
+	NextStep string `json:"nextStep"`
+	Me       *meDTO `json:"me,omitempty"`
+}
+
+type sessionResponse struct {
 	Status string `json:"status"`
+	Me     meDTO  `json:"me"`
 }
 
-type logoutRequest struct {
-	SessionToken string
-}
-
-func mapAuthErr(err error) int {
-	switch {
-	case errors.Is(err, auth.ErrInvalidPhone),
-		errors.Is(err, auth.ErrInvalidStep),
-		errors.Is(err, auth.ErrInvalidSessionState):
-		return fasthttp.StatusBadRequest
-	case errors.Is(err, auth.ErrInvalidCredentials),
-		errors.Is(err, auth.ErrSessionNotFound):
-		return fasthttp.StatusUnauthorized
-	default:
-		return fasthttp.StatusInternalServerError
-	}
-}
-
-func (s *Server) handleRequestLogin(ctx *fasthttp.RequestCtx) {
-	var req requestLoginRequest
+func (s *Server) handleRequestCode(ctx *fasthttp.RequestCtx) {
+	var req requestCodeRequest
 	if err := parseBody(ctx, &req); err != nil {
-		writeError(ctx, fasthttp.StatusBadRequest, "invalid request body")
+		writeErrorCode(ctx, fasthttp.StatusBadRequest, "INVALID_BODY", "invalid request body")
 		return
 	}
 
-	s.log.Info("request login", slog.String("phone", req.PhoneNumber))
-
-	output, err := s.requestLoginUC.Execute(ctx, auth.RequestLoginInput{
-		PhoneNumber: req.PhoneNumber,
-	})
+	output, err := s.requestCodeUC.Execute(ctx, auth.RequestCodeInput{Phone: req.Phone})
 	if err != nil {
-		s.log.Error("request login failed", slog.String("error", err.Error()))
-		writeError(ctx, mapAuthErr(err), err.Error())
+		s.writeError(ctx, err)
 		return
 	}
 
-	s.log.Info("request login success")
-	writeJSON(ctx, fasthttp.StatusOK, requestLoginResponse{
+	writeJSON(ctx, fasthttp.StatusOK, requestCodeResponse{
 		SessionToken: output.SessionToken,
+		NextStep:     string(output.NextStep),
+		CodeType:     output.CodeType,
+		Timeout:      output.Timeout,
 	})
 }
 
 func (s *Server) handleVerifyCode(ctx *fasthttp.RequestCtx) {
-	var req verifyCodeRequest
-	if err := parseBody(ctx, &req); err != nil {
-		writeError(ctx, fasthttp.StatusBadRequest, "invalid request body")
+	token, ok := s.bearerToken(ctx)
+	if !ok {
+		unauthorized(ctx)
 		return
 	}
 
-	s.log.Info("verify code")
+	var req verifyCodeRequest
+	if err := parseBody(ctx, &req); err != nil {
+		writeErrorCode(ctx, fasthttp.StatusBadRequest, "INVALID_BODY", "invalid request body")
+		return
+	}
 
 	output, err := s.verifyCodeUC.Execute(ctx, auth.VerifyCodeInput{
-		SessionToken: req.SessionToken,
+		SessionToken: token,
 		Code:         req.Code,
 	})
 	if err != nil {
-		s.log.Error("verify code failed", slog.String("error", err.Error()))
-		writeError(ctx, mapAuthErr(err), err.Error())
+		s.writeError(ctx, err)
 		return
 	}
 
-	s.log.Info("verify code success", slog.String("nextStep", string(output.NextStep)))
-	writeJSON(ctx, fasthttp.StatusOK, verifyCodeResponse{
-		NextStep: string(output.NextStep),
-	})
+	resp := authStepResponse{NextStep: string(output.NextStep)}
+	if output.Me != nil {
+		me := mapMe(*output.Me)
+		resp.Me = &me
+	}
+	writeJSON(ctx, fasthttp.StatusOK, resp)
 }
 
 func (s *Server) handleVerifyPassword(ctx *fasthttp.RequestCtx) {
-	var req verifyPasswordRequest
-	if err := parseBody(ctx, &req); err != nil {
-		writeError(ctx, fasthttp.StatusBadRequest, "invalid request body")
+	token, ok := s.bearerToken(ctx)
+	if !ok {
+		unauthorized(ctx)
 		return
 	}
 
-	s.log.Info("verify password")
+	var req verifyPasswordRequest
+	if err := parseBody(ctx, &req); err != nil {
+		writeErrorCode(ctx, fasthttp.StatusBadRequest, "INVALID_BODY", "invalid request body")
+		return
+	}
 
 	output, err := s.verifyPasswordUC.Execute(ctx, auth.VerifyPasswordInput{
-		SessionToken: req.SessionToken,
+		SessionToken: token,
 		Password:     req.Password,
 	})
 	if err != nil {
-		s.log.Error("verify password failed", slog.String("error", err.Error()))
-		writeError(ctx, mapAuthErr(err), err.Error())
+		s.writeError(ctx, err)
 		return
 	}
 
-	s.log.Info("verify password success")
-	writeJSON(ctx, fasthttp.StatusOK, verifyPasswordResponse{
-		Status: output.Status,
+	me := mapMe(output.Me)
+	writeJSON(ctx, fasthttp.StatusOK, authStepResponse{
+		NextStep: string(output.NextStep),
+		Me:       &me,
+	})
+}
+
+func (s *Server) handleSession(ctx *fasthttp.RequestCtx) {
+	token, ok := s.bearerToken(ctx)
+	if !ok {
+		unauthorized(ctx)
+		return
+	}
+
+	output, err := s.sessionUC.Execute(ctx, auth.SessionInput{SessionToken: token})
+	if err != nil {
+		s.writeError(ctx, err)
+		return
+	}
+
+	writeJSON(ctx, fasthttp.StatusOK, sessionResponse{
+		Status: "authorized",
+		Me:     mapMe(output.Me),
 	})
 }
 
 func (s *Server) handleLogout(ctx *fasthttp.RequestCtx) {
-	var req logoutRequest
-	if err := parseBody(ctx, &req); err != nil {
-		writeError(ctx, fasthttp.StatusBadRequest, "invalid request body")
+	token, ok := s.bearerToken(ctx)
+	if !ok {
+		unauthorized(ctx)
 		return
 	}
 
-	s.log.Info("logout")
-
-	if err := s.logoutUC.Execute(ctx, auth.LogoutInput{
-		SessionToken: req.SessionToken,
-	}); err != nil {
-		s.log.Error("logout failed", slog.String("error", err.Error()))
-		writeError(ctx, mapAuthErr(err), err.Error())
+	if err := s.logoutUC.Execute(ctx, auth.LogoutInput{SessionToken: token}); err != nil {
+		s.writeError(ctx, err)
 		return
 	}
+	ctx.SetStatusCode(fasthttp.StatusNoContent)
+}
 
-	s.log.Info("logout success")
-	writeJSON(ctx, fasthttp.StatusOK, map[string]string{})
+func unauthorized(ctx *fasthttp.RequestCtx) {
+	writeErrorCode(ctx, fasthttp.StatusUnauthorized, "SESSION_EXPIRED", "missing or invalid session token")
 }

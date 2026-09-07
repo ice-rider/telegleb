@@ -1,19 +1,24 @@
-export interface User {
-  id: string;
-  telegramId: number;
+// Формы данных сервера. Имена полей совпадают с JSON один в один — контракт
+// использует lowerCamelCase на всех уровнях, поэтому слоя переименования
+// между сетью и приложением больше нет.
+
+export type ChatType = "direct" | "group" | "channel";
+
+export type MediaKind =
+  | "photo"
+  | "video"
+  | "audio"
+  | "voice"
+  | "document"
+  | "sticker"
+  | "gif";
+
+export interface Me {
+  id: number;
   firstName: string;
   lastName: string;
   username: string;
   phone: string;
-  isBot: boolean;
-}
-
-export interface Chat {
-  id: number;
-  title: string;
-  type: "direct" | "group" | "channel";
-  unreadCount: number;
-  lastMessage: Message;
 }
 
 export interface MessageEntity {
@@ -22,68 +27,81 @@ export interface MessageEntity {
   type: string;
   url?: string;
   userId?: number;
+  language?: string;
+}
+
+export interface Media {
+  /** Непрозрачная ссылка на вложение. Клиент её не разбирает. */
+  ref: string;
+  kind: MediaKind;
+  mimeType?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  fileName?: string;
+}
+
+export interface ReplyPreview {
+  id: number;
+  senderName?: string;
+  text?: string;
 }
 
 export interface Message {
   id: number;
-  chatId: number;
+  chatRef: string;
   senderId: number;
+  senderName?: string;
+  /** Единственный признак «моё сообщение». Сравнивать senderId с id профиля нельзя. */
+  out: boolean;
   text: string;
   createdAt: string;
-  hasMedia: boolean;
-  mediaId: string;
-
-  out: boolean;
-  mentioned: boolean;
-  silent: boolean;
-  post: boolean;
-  pinned: boolean;
-  noforwards: boolean;
-  editDate: string;
-  views: number;
-  forwards: number;
-  groupedId: number;
-  viaBotId: number;
-  postAuthor: string;
-  ttlPeriod: number;
-
-  replyToMsgId: number;
-  replyToPeer: number;
-
-  fwdFromName: string;
-  fwdFromDate: string;
-  fwdFromChannelId: number;
-  fwdFromUserId: number;
-
-  repliesCount: number;
-  repliesMaxId: number;
-
+  editedAt?: string;
   entities: MessageEntity[];
+  media?: Media;
+  replyTo?: ReplyPreview;
+  forwardedFrom?: string;
+  views?: number;
+  pinned?: boolean;
+}
+
+export interface Chat {
+  /** Адрес чата. Все запросы идут по нему, а не по числовому id. */
+  ref: string;
+  id: number;
+  type: ChatType;
+  title: string;
+  unreadCount: number;
+  unreadMentionsCount: number;
+  markedUnread: boolean;
+  pinned: boolean;
+  muted: boolean;
+  /** Размещение приезжает вместе с чатом, а не отдельным справочником. */
+  archived: boolean;
+  folderIds: number[];
+  order: number;
+  lastMessage?: Message;
 }
 
 export interface Folder {
   id: number;
   title: string;
-  chatIds: number[];
+  emoticon?: string;
+  order: number;
 }
 
-export type SessionStatus =
-  | "AWAITING_PHONE"
-  | "AWAITING_CODE"
-  | "AWAITING_PASSWORD"
-  | "AUTHORIZED";
-
-export type NextStep = "AWAITING_PASSWORD" | "AUTHORIZED";
-
-export interface AuthState {
-  sessionToken: string | null;
-  status: SessionStatus;
-  isLoading: boolean;
-  error: string | null;
-}
-
-export interface DashboardData {
+export interface Dashboard {
   chats: Chat[];
   folders: Folder[];
-  ownUserId: number;
+  me: Me;
+  nextCursor?: string;
 }
+
+export type NextStep = "code" | "password" | "done";
+
+export type AuthStatus =
+  | "checking"
+  | "awaitingPhone"
+  | "awaitingCode"
+  | "awaitingPassword"
+  | "authorized";

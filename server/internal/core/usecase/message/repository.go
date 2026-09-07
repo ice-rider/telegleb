@@ -2,10 +2,13 @@ package message
 
 import (
 	"context"
+
 	"telegleb/internal/core/domain"
 )
 
 type MessageRepository interface {
-	GetChatHistory(ctx context.Context, sessionToken string, chatID string, limit int, offset int) ([]domain.Message, error)
-	SendMessage(ctx context.Context, sessionToken string, chatID string, content string) (domain.Message, error)
+	// GetHistory возвращает сообщения по возрастанию ID. beforeID == 0 — свежая выдача.
+	GetHistory(ctx context.Context, sessionToken string, peer domain.Peer, limit int, beforeID int) ([]domain.Message, error)
+	// Send отправляет текст. randomID — ключ идемпотентности от клиента.
+	Send(ctx context.Context, sessionToken string, peer domain.Peer, text string, randomID int64) (domain.Message, error)
 }

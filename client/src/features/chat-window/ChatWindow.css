@@ -70,3 +70,14 @@
   padding: 4px 12px;
   border-radius: 12px;
 }
+
+.chat-window__error {
+  margin: 16px auto;
+  max-width: 420px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fdecec;
+  color: #c0392b;
+  font-size: 14px;
+  text-align: center;
+}

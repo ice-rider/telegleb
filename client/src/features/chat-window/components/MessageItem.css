@@ -38,3 +38,132 @@
 .message--own .message__time {
   color: #6ab76a;
 }
+
+.message__sender {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f8ad8;
+  margin-bottom: 2px;
+}
+
+.message__forwarded {
+  font-size: 12px;
+  color: #8a8a8a;
+  margin-bottom: 4px;
+  font-style: italic;
+}
+
+.message__reply {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 3px solid #3f8ad8;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+  background: rgba(63, 138, 216, 0.08);
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+}
+
+.message__reply-author {
+  font-weight: 600;
+  color: #3f8ad8;
+}
+
+.message__reply-text {
+  color: #6b6b6b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.message__link {
+  color: #3f8ad8;
+  text-decoration: none;
+}
+
+.message__link:hover {
+  text-decoration: underline;
+}
+
+.message__mention {
+  color: #3f8ad8;
+}
+
+.message__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.message__pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.message__quote {
+  margin: 6px 0;
+  padding: 2px 10px;
+  border-left: 3px solid rgba(0, 0, 0, 0.2);
+  color: #555;
+}
+
+.message__spoiler {
+  background: #999;
+  color: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.message__spoiler:hover {
+  background: transparent;
+  color: inherit;
+}
+
+.message__media {
+  display: block;
+  max-width: 320px;
+  max-height: 320px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.message__media-placeholder {
+  width: 200px;
+  height: 140px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  margin-bottom: 4px;
+}
+
+.message__attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #4a4a4a;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+}
+
+.message__attachment-size {
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+.message__edited {
+  font-style: italic;
+  opacity: 0.75;
+}

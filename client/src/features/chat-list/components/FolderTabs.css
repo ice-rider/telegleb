@@ -36,3 +36,16 @@
 .folder-tab--active:hover {
   background: #229ed3;
 }
+
+.folder-tab__icon {
+  margin-right: 4px;
+}
+
+.folder-tab__count {
+  margin-left: 6px;
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+}

@@ -10,10 +10,15 @@ import (
 
 type Config struct {
 	Env      string `env:"APP_ENV" env-default:"development"`
+	HTTP     HTTPConfig
 	Log      LogConfig
 	Telegram TelegramConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+}
+
+type HTTPConfig struct {
+	Port string `env:"HTTP_PORT" env-default:"8080"`
 }
 
 type JWTConfig struct {

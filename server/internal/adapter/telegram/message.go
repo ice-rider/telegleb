@@ -3,14 +3,13 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"sort"
-	"strconv"
 	"time"
 
-	"github.com/gotd/td/tg"
 	"telegleb/internal/core/domain"
 	"telegleb/internal/core/usecase/message"
+
+	"github.com/gotd/td/tg"
 )
 
 type TelegramMessageRepository struct {
@@ -21,120 +20,109 @@ func NewTelegramMessageRepository(adapter *TelegramAdapter) message.MessageRepos
 	return &TelegramMessageRepository{adapter: adapter}
 }
 
-func (r *TelegramMessageRepository) GetChatHistory(ctx context.Context, sessionToken string, chatIDStr string, limit int, offsetID int) ([]domain.Message, error) {
+func (r *TelegramMessageRepository) GetHistory(ctx context.Context, sessionToken string, peer domain.Peer, limit int, beforeID int) ([]domain.Message, error) {
 	client, err := r.adapter.GetClient(ctx, sessionToken)
 	if err != nil {
 		return nil, err
 	}
 
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid chat id format: %w", err)
-	}
-
+	// Тип пира известен из ref — перебирать InputPeer вслепую не нужно.
 	resp, err := client.API.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
-		Peer:     &tg.InputPeerUser{UserID: chatID},
+		Peer:     inputPeer(peer),
 		Limit:    limit,
-		OffsetID: offsetID,
+		OffsetID: beforeID,
 	})
 	if err != nil {
-		// Реактивный фолбэк для каналов/супергрупп
-		resp, err = client.API.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
-			Peer:     &tg.InputPeerChannel{ChannelID: chatID},
-			Limit:    limit,
-			OffsetID: offsetID,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch chat history: %w", err)
-		}
+		return nil, fmt.Errorf("failed to fetch chat history: %w", err)
 	}
 
-	switch res := resp.(type) {
-	case *tg.MessagesMessagesSlice:
-		msgs := mapTelegramMessages(res.Messages)
-		sort.Slice(msgs, func(i, j int) bool {
-			return msgs[i].CreatedAt.Before(msgs[j].CreatedAt)
-		})
-		return msgs, nil
-	case *tg.MessagesMessages:
-		msgs := mapTelegramMessages(res.Messages)
-		sort.Slice(msgs, func(i, j int) bool {
-			return msgs[i].CreatedAt.Before(msgs[j].CreatedAt)
-		})
-		return msgs, nil
-	case *tg.MessagesChannelMessages:
-		msgs := mapTelegramMessages(res.Messages)
-		sort.Slice(msgs, func(i, j int) bool {
-			return msgs[i].CreatedAt.Before(msgs[j].CreatedAt)
-		})
-		return msgs, nil
-	default:
-		return []domain.Message{}, nil
+	msgs, chats, users := unpackMessages(resp)
+	d := newDicts(chats, users, 0)
+	d.addMessages(msgs)
+
+	result := make([]domain.Message, 0, len(msgs))
+	for _, mClass := range msgs {
+		msg, ok := mClass.(*tg.Message)
+		if !ok {
+			continue
+		}
+		result = append(result, d.mapMessage(msg, peer))
 	}
+
+	// Клиент рисует историю от старых к новым, Telegram отдаёт наоборот.
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result, nil
 }
 
-func (r *TelegramMessageRepository) SendMessage(ctx context.Context, sessionToken string, chatIDStr string, text string) (domain.Message, error) {
-	var emptyMsg domain.Message
+func (r *TelegramMessageRepository) Send(ctx context.Context, sessionToken string, peer domain.Peer, text string, randomID int64) (domain.Message, error) {
 	client, err := r.adapter.GetClient(ctx, sessionToken)
 	if err != nil {
-		return emptyMsg, err
+		return domain.Message{}, err
 	}
 
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
-	if err != nil {
-		return emptyMsg, fmt.Errorf("invalid chat id format: %w", err)
-	}
-
-	randomID := rand.Int63()
-	req := &tg.MessagesSendMessageRequest{
-		Peer:     &tg.InputPeerUser{UserID: chatID},
+	updates, err := client.API.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+		Peer:     inputPeer(peer),
 		Message:  text,
 		RandomID: randomID,
-	}
-
-	// Выполняем запрос к Telegram API
-	updates, err := client.API.MessagesSendMessage(ctx, req)
+	})
 	if err != nil {
-		// Исправлено: Если это группа/канал, подменяем получателя в структуре req и отправляем ее же
-		req.Peer = &tg.InputPeerChannel{ChannelID: chatID}
-		updates, err = client.API.MessagesSendMessage(ctx, req)
-		if err != nil {
-			return emptyMsg, fmt.Errorf("failed to send telegram message: %w", err)
-		}
+		return domain.Message{}, fmt.Errorf("failed to send telegram message: %w", err)
 	}
 
-	// Безопасный фолбэк для ID на случай, если структура ответов пуста
-	generatedID := int64(randomID & 0x7FFFFFFF)
+	return messageFromUpdates(updates, peer, text), nil
+}
 
-	if updates != nil {
-		switch u := updates.(type) {
-		case *tg.UpdateShortSentMessage: // Исправлено: Update вместо Updates (в единственном числе)
-			generatedID = int64(u.ID)
-		case *tg.Updates:
-			for _, updateClass := range u.Updates {
-				if m, ok := updateClass.(*tg.UpdateNewMessage); ok {
-					if msgObj, ok := m.Message.(*tg.Message); ok {
-						generatedID = int64(msgObj.ID)
-						break
-					}
-				}
-				if m, ok := updateClass.(*tg.UpdateNewChannelMessage); ok {
-					if msgObj, ok := m.Message.(*tg.Message); ok {
-						generatedID = int64(msgObj.ID)
-						break
-					}
-				}
+// messageFromUpdates достаёт из ответа настоящее сообщение. Возвращать
+// заглушку с нулевым отправителем нельзя: клиент выравнивает пузырь по Out, и
+// собственное сообщение уехало бы влево.
+func messageFromUpdates(updates tg.UpdatesClass, peer domain.Peer, text string) domain.Message {
+	fallback := domain.Message{
+		ChatRef:   peer.Ref(),
+		Out:       true,
+		Text:      text,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	switch u := updates.(type) {
+	case *tg.UpdateShortSentMessage:
+		fallback.ID = int64(u.ID)
+		fallback.CreatedAt = time.Unix(int64(u.Date), 0).UTC()
+		fallback.Out = true
+		fallback.Entities = mapEntities(u.Entities)
+		return fallback
+
+	case *tg.Updates:
+		d := newDicts(u.Chats, u.Users, 0)
+		for _, updClass := range u.Updates {
+			var msgClass tg.MessageClass
+			switch upd := updClass.(type) {
+			case *tg.UpdateNewMessage:
+				msgClass = upd.Message
+			case *tg.UpdateNewChannelMessage:
+				msgClass = upd.Message
+			default:
+				continue
+			}
+			if msg, ok := msgClass.(*tg.Message); ok {
+				mapped := d.mapMessage(msg, peer)
+				mapped.Out = true
+				return mapped
 			}
 		}
 	}
 
-	return domain.Message{
-		ID:        generatedID,
-		ChatID:    chatID,
-		SenderID:  0, // Идентификатор "селф"
-		Text:      text,
-		CreatedAt: time.Now(),
-		HasMedia:  false,
-		MediaId:   "",
-	}, nil
+	return fallback
+}
+
+func unpackMessages(resp tg.MessagesMessagesClass) ([]tg.MessageClass, []tg.ChatClass, []tg.UserClass) {
+	switch res := resp.(type) {
+	case *tg.MessagesMessages:
+		return res.Messages, res.Chats, res.Users
+	case *tg.MessagesMessagesSlice:
+		return res.Messages, res.Chats, res.Users
+	case *tg.MessagesChannelMessages:
+		return res.Messages, res.Chats, res.Users
+	default:
+		return nil, nil, nil
+	}
 }

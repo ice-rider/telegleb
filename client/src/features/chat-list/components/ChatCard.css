@@ -86,3 +86,14 @@
   background: #fff;
   color: #3390ec;
 }
+
+.chat-card__pin,
+.chat-card__muted {
+  font-size: 11px;
+  margin-right: 3px;
+  opacity: 0.65;
+}
+
+.chat-card__badge--muted {
+  background: #b6b6b6;
+}

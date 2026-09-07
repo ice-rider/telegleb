@@ -1,19 +1,16 @@
 import { Show, createSignal } from "solid-js";
-import { Button } from "../../../shared/components";
-import { Input } from "../../../shared/components";
-import { Loader } from "../../../shared/components";
+import { Button, Input, Loader } from "~/shared/components";
 import { useAuth } from "../store";
 import "./PasswordForm.css";
 
 export function PasswordForm() {
-  const { state, verifyPassword } = useAuth();
+  const { isLoading, error, verifyPassword } = useAuth();
   const [password, setPassword] = createSignal("");
 
   function handleSubmit(e: Event) {
     e.preventDefault();
-    if (password().trim()) {
-      verifyPassword(password().trim());
-    }
+    const value = password().trim();
+    if (value) verifyPassword(value);
   }
 
   return (
@@ -29,14 +26,10 @@ export function PasswordForm() {
         placeholder="Введите пароль"
         value={password()}
         onInput={(e) => setPassword(e.currentTarget.value)}
-        error={state().error ?? undefined}
+        error={error() ?? undefined}
       />
-      <Button
-        type="submit"
-        fullWidth
-        disabled={state().isLoading || !password()}
-      >
-        <Show when={!state().isLoading} fallback={<Loader size="sm" />}>
+      <Button type="submit" fullWidth disabled={isLoading() || !password()}>
+        <Show when={!isLoading()} fallback={<Loader size="sm" />}>
           Войти
         </Show>
       </Button>

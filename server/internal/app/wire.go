@@ -16,20 +16,13 @@ import (
 	"github.com/google/wire"
 )
 
-func provideTelegramAppID(cfg *config.Config) int {
-	return cfg.Telegram.AppID
-}
-
-func provideTelegramAppHash(cfg *config.Config) string {
-	return cfg.Telegram.AppHash
-}
-
-func provideTelegramProxyAddr(cfg *config.Config) string {
-	return cfg.Telegram.ProxyAddr
-}
-
-func provideTelegramProxySecret(cfg *config.Config) string {
-	return cfg.Telegram.ProxySecret
+func provideTelegramConfig(cfg *config.Config) telegram.Config {
+	return telegram.Config{
+		AppID:       cfg.Telegram.AppID,
+		AppHash:     cfg.Telegram.AppHash,
+		ProxyAddr:   cfg.Telegram.ProxyAddr,
+		ProxySecret: cfg.Telegram.ProxySecret,
+	}
 }
 
 func provideJWTManager(cfg *config.Config) *jwt.TokenManager {
@@ -42,25 +35,23 @@ func InitApp() (*App, error) {
 		ProvideLogger,
 		ProvideRedis,
 
-		provideTelegramAppID,
-		provideTelegramAppHash,
-		provideTelegramProxyAddr,
-		provideTelegramProxySecret,
+		provideTelegramConfig,
 		provideJWTManager,
 
 		session.NewRedisSessionRepository,
 
 		telegram.ProviderSet,
 
-		auth.NewRequestLoginUseCase,
+		auth.NewRequestCodeUseCase,
 		auth.NewVerifyCodeUseCase,
 		auth.NewVerifyPasswordUseCase,
+		auth.NewSessionUseCase,
 		auth.NewLogoutUseCase,
 
 		messenger.NewLoadDashboardUseCase,
 		messenger.NewOpenChatUseCase,
 		messenger.NewSendMessageUseCase,
-		messenger.NewStreamMediaChunkUseCase,
+		messenger.NewStreamMediaUseCase,
 
 		deliveryhttp.NewServer,
 

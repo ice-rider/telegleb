@@ -24,6 +24,16 @@ type ActiveClient struct {
 	Done      <-chan error
 }
 
+// Config — параметры подключения к Telegram одной структурой. Раньше это
+// были четыре отдельных аргумента, из-за чего wire не мог развести три строки
+// и wire_gen.go приходилось править руками.
+type Config struct {
+	AppID       int
+	AppHash     string
+	ProxyAddr   string
+	ProxySecret string
+}
+
 type TelegramAdapter struct {
 	appID       int
 	appHash     string
@@ -36,12 +46,12 @@ type TelegramAdapter struct {
 	clientPool map[string]*ActiveClient
 }
 
-func NewTelegramAdapter(appID int, appHash string, proxyAddr string, proxySecret string, sessionRepo session.SessionRepository, log *slog.Logger) *TelegramAdapter {
+func NewTelegramAdapter(cfg Config, sessionRepo session.SessionRepository, log *slog.Logger) *TelegramAdapter {
 	return &TelegramAdapter{
-		appID:       appID,
-		appHash:     appHash,
-		proxyAddr:   proxyAddr,
-		proxySecret: proxySecret,
+		appID:       cfg.AppID,
+		appHash:     cfg.AppHash,
+		proxyAddr:   cfg.ProxyAddr,
+		proxySecret: cfg.ProxySecret,
 		sessionRepo: sessionRepo,
 		log:         log,
 		clientPool:  make(map[string]*ActiveClient),
@@ -74,7 +84,7 @@ func (a *TelegramAdapter) GetClient(ctx context.Context, sessionToken string) (*
 }
 
 func (a *TelegramAdapter) initAndFetchClient(ctx context.Context, sessionToken string) (*ActiveClient, error) {
-	a.log.Info("init and fetch client", slog.String("token", sessionToken[:8]+"..."))
+	a.log.Info("init and fetch client", slog.String("token", shortToken(sessionToken)))
 
 	authSession, err := a.sessionRepo.GetSessionByToken(ctx, sessionToken)
 	if err != nil {
@@ -138,12 +148,12 @@ func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *do
 	defer a.mu.Unlock()
 
 	if active, exists := a.clientPool[authSession.SessionToken]; exists {
-		a.log.Info("using existing client", slog.String("token", authSession.SessionToken[:8]+"..."))
+		a.log.Info("using existing client", slog.String("token", shortToken(authSession.SessionToken)))
 		return active.Client, nil
 	}
 
 	a.log.Info("creating new telegram client",
-		slog.String("token", authSession.SessionToken[:8]+"..."),
+		slog.String("token", shortToken(authSession.SessionToken)),
 		slog.Int("appID", a.appID),
 		slog.Bool("hasProxy", a.proxyAddr != ""),
 	)
@@ -164,7 +174,11 @@ func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *do
 			<-cCtx.Done()
 			return nil
 		})
-		a.log.Info("telegram client.Run() exited", slog.String("error", err.Error()))
+		if err != nil {
+			a.log.Info("telegram client.Run() exited", slog.String("error", err.Error()))
+		} else {
+			a.log.Info("telegram client.Run() exited")
+		}
 		doneChan <- err
 		close(doneChan)
 	}()
@@ -181,7 +195,7 @@ func (a *TelegramAdapter) GetOrCreateClient(ctx context.Context, authSession *do
 		return client, nil
 	case err := <-doneChan:
 		runCancel()
-		a.log.Error("telegram client failed to start", slog.String("error", err.Error()))
+		a.log.Error("telegram client failed to start", slog.Any("error", err))
 		return nil, fmt.Errorf("telegram client failed to start: %w", err)
 	case <-ctx.Done():
 		runCancel()
@@ -207,7 +221,7 @@ func (a *TelegramAdapter) TerminateSession(ctx context.Context, sessionToken str
 		return nil
 	}
 
-	a.log.Info("terminating session", slog.String("token", sessionToken[:8]+"..."))
+	a.log.Info("terminating session", slog.String("token", shortToken(sessionToken)))
 	active.CancelRun()
 	delete(a.clientPool, sessionToken)
 

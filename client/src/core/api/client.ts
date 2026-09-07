@@ -1,151 +1,45 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
+import type { Chat, Dashboard, Me, Message, NextStep } from "~/types";
 
-export interface RequestLoginResponse {
-  sessionToken: string;
+const TOKEN_STORAGE_KEY = "telegleb.sessionToken";
+
+/** Ошибка контракта: код машиночитаемый, ветвиться нужно по нему, не по тексту. */
+export class ApiError extends Error {
+  readonly code: string;
+  readonly retryAfter?: number;
+
+  constructor(code: string, message: string, retryAfter?: number) {
+    super(message);
+    this.code = code;
+    this.retryAfter = retryAfter;
+  }
 }
 
-export interface VerifyCodeResponse {
-  nextStep: "AWAITING_PASSWORD" | "AUTHORIZED";
+let sessionToken: string | null = null;
+try {
+  sessionToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+} catch {
+  sessionToken = null;
 }
 
-export interface VerifyPasswordResponse {
-  status: string;
+let onSessionExpired: (() => void) | null = null;
+
+export function setSessionExpiredHandler(handler: () => void) {
+  onSessionExpired = handler;
 }
 
-export interface LoadDashboardResponse {
-  chats: ChatDTO[];
-  folders: FolderDTO[];
-  OwnUserID: number;
+export function getToken(): string | null {
+  return sessionToken;
 }
 
-export interface OpenChatResponse {
-  messages: MessageDTO[];
-}
-
-export interface SendMessageResponse {
-  message: MessageDTO;
-}
-
-export interface ChatDTO {
-  ID: number;
-  Title: string;
-  Type: number;
-  UnreadCount: number;
-  LastMessage: MessageDTO;
-}
-
-export interface MessageEntityDTO {
-  offset: number;
-  length: number;
-  type: string;
-  url?: string;
-  userId?: number;
-}
-
-export interface MessageDTO {
-  ID: number;
-  ChatID: number;
-  SenderID: number;
-  Text: string;
-  CreatedAt: string;
-  HasMedia: boolean;
-  MediaId: string;
-
-  Out: boolean;
-  Mentioned: boolean;
-  Silent: boolean;
-  Post: boolean;
-  Pinned: boolean;
-  Noforwards: boolean;
-  EditDate: string;
-  Views: number;
-  Forwards: number;
-  GroupedID: number;
-  ViaBotID: number;
-  PostAuthor: string;
-  TTLPeriod: number;
-
-  ReplyToMsgID: number;
-  ReplyToPeer: number;
-
-  FwdFromName: string;
-  FwdFromDate: string;
-  FwdFromChannelID: number;
-  FwdFromUserID: number;
-
-  RepliesCount: number;
-  RepliesMaxID: number;
-
-  Entities: MessageEntityDTO[];
-}
-
-export interface FolderDTO {
-  ID: number;
-  Title: string;
-  ChatIDs: number[];
-}
-
-function mapChatType(type: number): "direct" | "group" | "channel" {
-  if (type === 0) return "direct";
-  if (type === 1) return "group";
-  return "channel";
-}
-
-function mapChat(dto: ChatDTO) {
-  return {
-    id: dto.ID,
-    title: dto.Title,
-    type: mapChatType(dto.Type),
-    unreadCount: dto.UnreadCount,
-    lastMessage: mapMessage(dto.LastMessage),
-  };
-}
-
-function mapMessage(dto: MessageDTO) {
-  return {
-    id: dto.ID,
-    chatId: dto.ChatID,
-    senderId: dto.SenderID,
-    text: dto.Text,
-    createdAt: dto.CreatedAt,
-    hasMedia: dto.HasMedia,
-    mediaId: dto.MediaId,
-
-    out: dto.Out,
-    mentioned: dto.Mentioned,
-    silent: dto.Silent,
-    post: dto.Post,
-    pinned: dto.Pinned,
-    noforwards: dto.Noforwards,
-    editDate: dto.EditDate,
-    views: dto.Views,
-    forwards: dto.Forwards,
-    groupedId: dto.GroupedID,
-    viaBotId: dto.ViaBotID,
-    postAuthor: dto.PostAuthor,
-    ttlPeriod: dto.TTLPeriod,
-
-    replyToMsgId: dto.ReplyToMsgID,
-    replyToPeer: dto.ReplyToPeer,
-
-    fwdFromName: dto.FwdFromName,
-    fwdFromDate: dto.FwdFromDate,
-    fwdFromChannelId: dto.FwdFromChannelID,
-    fwdFromUserId: dto.FwdFromUserID,
-
-    repliesCount: dto.RepliesCount,
-    repliesMaxId: dto.RepliesMaxID,
-
-    entities: dto.Entities ?? [],
-  };
-}
-
-function mapFolder(dto: FolderDTO) {
-  return {
-    id: dto.ID,
-    title: dto.Title,
-    chatIds: dto.ChatIDs,
-  };
+export function setToken(token: string | null) {
+  sessionToken = token;
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Приватный режим и заблокированное хранилище не должны ронять вход.
+  }
 }
 
 const http = axios.create({
@@ -153,8 +47,8 @@ const http = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-let sessionToken: string | null = null;
-
+// Токен ходит только заголовком: в query он оседает в access-логах, в теле
+// дублирует то, что уже есть в заголовке.
 http.interceptors.request.use((config) => {
   if (sessionToken) {
     config.headers.Authorization = `Bearer ${sessionToken}`;
@@ -164,90 +58,105 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (res) => res,
-  (err) => {
-    const msg =
-      err.response?.data?.error || err.message || "Request failed";
-    return Promise.reject(new Error(msg));
+  (err: AxiosError<{ error?: { code: string; message: string; retryAfter?: number } }>) => {
+    const payload = err.response?.data?.error;
+    const apiError = new ApiError(
+      payload?.code ?? "NETWORK_ERROR",
+      payload?.message ?? err.message ?? "Не удалось выполнить запрос",
+      payload?.retryAfter,
+    );
+
+    // Разлогин живёт здесь, а не в каждом вызове: иначе клиент с протухшим
+    // токеном остаётся в интерфейсе и просто показывает ошибки.
+    if (apiError.code === "SESSION_EXPIRED") {
+      setToken(null);
+      onSessionExpired?.();
+    }
+
+    return Promise.reject(apiError);
   },
 );
 
+export interface RequestCodeResponse {
+  sessionToken: string;
+  nextStep: NextStep;
+  codeType: string;
+  timeout?: number;
+}
+
+export interface AuthStepResponse {
+  nextStep: NextStep;
+  me?: Me;
+}
+
+export interface HistoryResponse {
+  messages: Message[];
+  nextBeforeId?: number;
+}
+
 export const api = {
-  setToken(token: string) {
-    sessionToken = token;
-  },
-
-  clearToken() {
-    sessionToken = null;
-  },
-
-  async requestLogin(phoneNumber: string) {
-    const { data } = await http.post<RequestLoginResponse>(
-      "/auth/request-login",
-      { PhoneNumber: phoneNumber },
-    );
-    sessionToken = data.sessionToken;
+  async requestCode(phone: string): Promise<RequestCodeResponse> {
+    const { data } = await http.post<RequestCodeResponse>("/auth/request-code", { phone });
+    setToken(data.sessionToken);
     return data;
   },
 
-  async verifyCode(stoken: string, code: string) {
-    const { data } = await http.post<VerifyCodeResponse>(
-      "/auth/verify-code",
-      { SessionToken: stoken, Code: code },
+  async verifyCode(code: string): Promise<AuthStepResponse> {
+    const { data } = await http.post<AuthStepResponse>("/auth/verify-code", { code });
+    return data;
+  },
+
+  async verifyPassword(password: string): Promise<AuthStepResponse> {
+    const { data } = await http.post<AuthStepResponse>("/auth/verify-password", { password });
+    return data;
+  },
+
+  async session(): Promise<Me> {
+    const { data } = await http.get<{ status: string; me: Me }>("/auth/session");
+    return data.me;
+  },
+
+  async logout(): Promise<void> {
+    try {
+      await http.post("/auth/logout");
+    } finally {
+      setToken(null);
+    }
+  },
+
+  /** Чаты, папки и профиль приезжают одним ответом — по контракту это атомарно. */
+  async loadDashboard(limit = 100, cursor?: string): Promise<Dashboard> {
+    const { data } = await http.get<Dashboard>("/chats", { params: { limit, cursor } });
+    return data;
+  },
+
+  async history(chat: Chat, limit = 50, beforeId?: number): Promise<HistoryResponse> {
+    const { data } = await http.get<HistoryResponse>(
+      `/chats/${encodeURIComponent(chat.ref)}/messages`,
+      { params: { limit, beforeId } },
     );
     return data;
   },
 
-  async verifyPassword(stoken: string, password: string) {
-    const { data } = await http.post<VerifyPasswordResponse>(
-      "/auth/verify-password",
-      { SessionToken: stoken, Password: password },
+  async sendMessage(chat: Chat, text: string, randomId: string): Promise<Message> {
+    const { data } = await http.post<{ message: Message }>(
+      `/chats/${encodeURIComponent(chat.ref)}/messages`,
+      { text, randomId },
     );
-    return data;
+    return data.message;
   },
 
-  async logout(stoken: string) {
-    await http.post("/auth/logout", { SessionToken: stoken });
-    sessionToken = null;
-  },
-
-  async loadDashboard(limit = 30, offset = 0) {
-    const { data } = await http.post<LoadDashboardResponse>(
-      "/messenger/dashboard",
-      { SessionToken: sessionToken, Limit: limit, Offset: offset },
-    );
-    return {
-      chats: data.chats.map(mapChat),
-      folders: data.folders.map(mapFolder),
-      ownUserId: data.OwnUserID,
-    };
-  },
-
-  async openChat(chatId: number, limit = 50, offset = 0) {
-    const { data } = await http.post<OpenChatResponse>(
-      "/messenger/open-chat",
-      {
-        SessionToken: sessionToken,
-        ChatID: String(chatId),
-        Limit: limit,
-        Offset: offset,
-      },
-    );
-    return data.messages.map(mapMessage);
-  },
-
-  async sendMessage(chatId: number, content: string) {
-    const { data } = await http.post<SendMessageResponse>(
-      "/messenger/send-message",
-      {
-        SessionToken: sessionToken,
-        ChatID: String(chatId),
-        Content: content,
-      },
-    );
-    return mapMessage(data.message);
-  },
-
-  getMediaUrl(mediaId: string): string {
-    return `/api/v1/media/stream/${mediaId}?token=${sessionToken}`;
+  /**
+   * Медиа скачивается через fetch, а не через <img src>: адрес требует
+   * заголовка Authorization, а тег его отправить не может.
+   */
+  async mediaObjectUrl(ref: string): Promise<string> {
+    const res = await fetch(`/api/v1/media/${encodeURIComponent(ref)}`, {
+      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+    });
+    if (!res.ok) {
+      throw new ApiError("MEDIA_NOT_FOUND", "Не удалось загрузить вложение");
+    }
+    return URL.createObjectURL(await res.blob());
   },
 };

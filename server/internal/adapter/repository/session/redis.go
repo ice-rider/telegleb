@@ -1,12 +1,12 @@
 package session
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"errors"
-	"time"
 	"telegleb/internal/core/domain"
 	"telegleb/internal/core/usecase/session"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )

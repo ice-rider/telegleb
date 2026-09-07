@@ -1,34 +1,54 @@
-import { Show, For } from "solid-js";
-import type { Folder } from "../../../types";
+import { For, Show } from "solid-js";
+import type { Folder } from "~/types";
+import type { Tab } from "../store";
 import "./FolderTabs.css";
 
 interface FolderTabsProps {
   folders: Folder[];
-  selectedId: number | null;
-  onSelect: (id: number | null) => void;
+  archivedCount: number;
+  selected: Tab;
+  onSelect: (tab: Tab) => void;
+}
+
+function isSame(a: Tab, b: Tab): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind !== "folder" || b.kind !== "folder" || a.id === b.id;
 }
 
 export function FolderTabs(props: FolderTabsProps) {
+  const tabClass = (tab: Tab) =>
+    `folder-tab ${isSame(props.selected, tab) ? "folder-tab--active" : ""}`;
+
   return (
-    <Show when={props.folders.length > 0}>
-      <div class="folder-tabs">
+    <div class="folder-tabs">
+      <button class={tabClass({ kind: "all" })} onClick={() => props.onSelect({ kind: "all" })}>
+        Все
+      </button>
+
+      <For each={props.folders}>
+        {(folder) => (
+          <button
+            class={tabClass({ kind: "folder", id: folder.id })}
+            onClick={() => props.onSelect({ kind: "folder", id: folder.id })}
+          >
+            <Show when={folder.emoticon}>
+              <span class="folder-tab__icon">{folder.emoticon}</span>
+            </Show>
+            {folder.title}
+          </button>
+        )}
+      </For>
+
+      {/* Архив — обычная вкладка, но его чаты никогда не попадают в «Все». */}
+      <Show when={props.archivedCount > 0}>
         <button
-          class={`folder-tab ${props.selectedId === null ? "folder-tab--active" : ""}`}
-          onClick={() => props.onSelect(null)}
+          class={tabClass({ kind: "archive" })}
+          onClick={() => props.onSelect({ kind: "archive" })}
         >
-          Все
+          🗄 Архив
+          <span class="folder-tab__count">{props.archivedCount}</span>
         </button>
-        <For each={props.folders}>
-          {(folder) => (
-            <button
-              class={`folder-tab ${props.selectedId === folder.id ? "folder-tab--active" : ""}`}
-              onClick={() => props.onSelect(folder.id)}
-            >
-              {folder.title}
-            </button>
-          )}
-        </For>
-      </div>
-    </Show>
+      </Show>
+    </div>
   );
 }
