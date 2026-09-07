@@ -1,5 +1,6 @@
 import axios, { AxiosError } from "axios";
-import type { Chat, Dashboard, Me, Message, NextStep } from "~/types";
+import { log } from "~/core/log";
+import type { Chat, Dashboard, Me, Message, NextStep, Topic } from "~/types";
 
 const TOKEN_STORAGE_KEY = "telegleb.sessionToken";
 
@@ -66,6 +67,18 @@ http.interceptors.response.use(
       payload?.retryAfter,
     );
 
+    // Каждая ошибка API попадает в консоль с полным контекстом — методом,
+    // адресом, статусом и кодом. Это единственное место, где видно все
+    // сетевые сбои сразу.
+    log.error("api", `${apiError.code} — ${apiError.message}`, {
+      method: err.config?.method?.toUpperCase(),
+      url: err.config?.url,
+      params: err.config?.params,
+      status: err.response?.status,
+      retryAfter: apiError.retryAfter,
+      body: err.response?.data,
+    });
+
     // Разлогин живёт здесь, а не в каждом вызове: иначе клиент с протухшим
     // токеном остаётся в интерфейсе и просто показывает ошибки.
     if (apiError.code === "SESSION_EXPIRED") {
@@ -92,6 +105,38 @@ export interface AuthStepResponse {
 export interface HistoryResponse {
   messages: Message[];
   nextBeforeId?: number;
+}
+
+/**
+ * Сводка загрузки дашборда. Отвечает на вопрос «почему в папке мало чатов»
+ * числами: сколько диалогов реально пришло, сколько сервер отбросил и
+ * сколько участников получила каждая папка.
+ */
+function logDashboard(data: Dashboard) {
+  log.group("dashboard", `чатов ${data.chats.length}, папок ${data.folders.length}`, () => {
+    const archived = data.chats.filter((c) => c.archived).length;
+    console.info("всего:", data.chats.length, "| в архиве:", archived, "| форумов:", data.chats.filter((c) => c.isForum).length);
+    console.info("сервер:", data.stats);
+
+    const rows = data.folders.map((f) => ({
+      папка: f.title,
+      id: f.id,
+      чатов: data.chats.filter((c) => c.folderIds.includes(f.id)).length,
+    }));
+    rows.push({ папка: "Все (без архива)", id: 0, чатов: data.chats.length - archived });
+    rows.push({ папка: "Архив", id: -1, чатов: archived });
+    console.table(rows);
+
+    const orphans = data.chats.filter((c) => !c.archived && c.folderIds.length === 0).length;
+    if (orphans) console.info("чатов вне пользовательских папок:", orphans);
+  });
+
+  if (data.stats.skippedUnknownPeer > 0) {
+    log.warn("dashboard", `сервер отбросил ${data.stats.skippedUnknownPeer} диалогов: пир не найден в словарях ответа Telegram`);
+  }
+  if (data.truncated) {
+    log.warn("dashboard", "выборка диалогов упёрлась в потолок — раскладка по папкам может быть неполной");
+  }
 }
 
 export const api = {
@@ -125,23 +170,32 @@ export const api = {
   },
 
   /** Чаты, папки и профиль приезжают одним ответом — по контракту это атомарно. */
-  async loadDashboard(limit = 100, cursor?: string): Promise<Dashboard> {
-    const { data } = await http.get<Dashboard>("/chats", { params: { limit, cursor } });
+  async loadDashboard(): Promise<Dashboard> {
+    const { data } = await http.get<Dashboard>("/chats");
+    logDashboard(data);
     return data;
   },
 
-  async history(chat: Chat, limit = 50, beforeId?: number): Promise<HistoryResponse> {
+  async topics(chat: Chat): Promise<Topic[]> {
+    const { data } = await http.get<{ topics: Topic[] }>(
+      `/chats/${encodeURIComponent(chat.ref)}/topics`,
+    );
+    log.info("topics", `${chat.title}: тем ${data.topics.length}`);
+    return data.topics;
+  },
+
+  async history(chat: Chat, opts: { limit?: number; beforeId?: number; topicId?: number } = {}): Promise<HistoryResponse> {
     const { data } = await http.get<HistoryResponse>(
       `/chats/${encodeURIComponent(chat.ref)}/messages`,
-      { params: { limit, beforeId } },
+      { params: { limit: opts.limit ?? 50, beforeId: opts.beforeId, topicId: opts.topicId } },
     );
     return data;
   },
 
-  async sendMessage(chat: Chat, text: string, randomId: string): Promise<Message> {
+  async sendMessage(chat: Chat, text: string, randomId: string, topicId?: number): Promise<Message> {
     const { data } = await http.post<{ message: Message }>(
       `/chats/${encodeURIComponent(chat.ref)}/messages`,
-      { text, randomId },
+      { text, randomId, topicId },
     );
     return data.message;
   },

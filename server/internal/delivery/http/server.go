@@ -28,6 +28,7 @@ type Server struct {
 	logoutUC         *auth.LogoutUseCase
 
 	loadDashboardUC *messenger.LoadDashboardUseCase
+	listTopicsUC    *messenger.ListTopicsUseCase
 	openChatUC      *messenger.OpenChatUseCase
 	sendMessageUC   *messenger.SendMessageUseCase
 	streamMediaUC   *messenger.StreamMediaUseCase
@@ -44,6 +45,7 @@ func NewServer(
 	sessionUC *auth.SessionUseCase,
 	logoutUC *auth.LogoutUseCase,
 	loadDashboardUC *messenger.LoadDashboardUseCase,
+	listTopicsUC *messenger.ListTopicsUseCase,
 	openChatUC *messenger.OpenChatUseCase,
 	sendMessageUC *messenger.SendMessageUseCase,
 	streamMediaUC *messenger.StreamMediaUseCase,
@@ -59,6 +61,7 @@ func NewServer(
 		sessionUC:        sessionUC,
 		logoutUC:         logoutUC,
 		loadDashboardUC:  loadDashboardUC,
+		listTopicsUC:     listTopicsUC,
 		openChatUC:       openChatUC,
 		sendMessageUC:    sendMessageUC,
 		streamMediaUC:    streamMediaUC,

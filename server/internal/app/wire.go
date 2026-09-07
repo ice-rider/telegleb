@@ -49,6 +49,7 @@ func InitApp() (*App, error) {
 		auth.NewLogoutUseCase,
 
 		messenger.NewLoadDashboardUseCase,
+		messenger.NewListTopicsUseCase,
 		messenger.NewOpenChatUseCase,
 		messenger.NewSendMessageUseCase,
 		messenger.NewStreamMediaUseCase,

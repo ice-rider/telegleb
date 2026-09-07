@@ -20,20 +20,36 @@ func NewTelegramMessageRepository(adapter *TelegramAdapter) message.MessageRepos
 	return &TelegramMessageRepository{adapter: adapter}
 }
 
-func (r *TelegramMessageRepository) GetHistory(ctx context.Context, sessionToken string, peer domain.Peer, limit int, beforeID int) ([]domain.Message, error) {
+func (r *TelegramMessageRepository) GetHistory(ctx context.Context, sessionToken string, peer domain.Peer, topicID, limit, beforeID int) ([]domain.Message, error) {
 	client, err := r.adapter.GetClient(ctx, sessionToken)
 	if err != nil {
 		return nil, err
 	}
 
-	// Тип пира известен из ref — перебирать InputPeer вслепую не нужно.
-	resp, err := client.API.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
-		Peer:     inputPeer(peer),
-		Limit:    limit,
-		OffsetID: beforeID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch chat history: %w", err)
+	var (
+		resp tg.MessagesMessagesClass
+		err2 error
+	)
+
+	if topicID > 0 {
+		// У форума нет плоской истории: сообщения темы — это тред,
+		// корнем которого служит сообщение с id темы.
+		resp, err2 = client.API.MessagesGetReplies(ctx, &tg.MessagesGetRepliesRequest{
+			Peer:     inputPeer(peer),
+			MsgID:    topicID,
+			Limit:    limit,
+			OffsetID: beforeID,
+		})
+	} else {
+		// Тип пира известен из ref — перебирать InputPeer вслепую не нужно.
+		resp, err2 = client.API.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+			Peer:     inputPeer(peer),
+			Limit:    limit,
+			OffsetID: beforeID,
+		})
+	}
+	if err2 != nil {
+		return nil, fmt.Errorf("failed to fetch chat history: %w", err2)
 	}
 
 	msgs, chats, users := unpackMessages(resp)
@@ -54,17 +70,26 @@ func (r *TelegramMessageRepository) GetHistory(ctx context.Context, sessionToken
 	return result, nil
 }
 
-func (r *TelegramMessageRepository) Send(ctx context.Context, sessionToken string, peer domain.Peer, text string, randomID int64) (domain.Message, error) {
+func (r *TelegramMessageRepository) Send(ctx context.Context, sessionToken string, peer domain.Peer, topicID int, text string, randomID int64) (domain.Message, error) {
 	client, err := r.adapter.GetClient(ctx, sessionToken)
 	if err != nil {
 		return domain.Message{}, err
 	}
 
-	updates, err := client.API.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+	req := &tg.MessagesSendMessageRequest{
 		Peer:     inputPeer(peer),
 		Message:  text,
 		RandomID: randomID,
-	})
+	}
+
+	// Без указания темы сообщение уедет в General, а не туда, где его пишут.
+	if topicID > 0 {
+		replyTo := &tg.InputReplyToMessage{ReplyToMsgID: topicID}
+		replyTo.SetTopMsgID(topicID)
+		req.SetReplyTo(replyTo)
+	}
+
+	updates, err := client.API.MessagesSendMessage(ctx, req)
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("failed to send telegram message: %w", err)
 	}

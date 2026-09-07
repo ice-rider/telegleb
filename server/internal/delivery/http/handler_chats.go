@@ -9,10 +9,24 @@ import (
 )
 
 type chatsResponse struct {
-	Chats      []chatDTO   `json:"chats"`
-	Folders    []folderDTO `json:"folders"`
-	Me         meDTO       `json:"me"`
-	NextCursor string      `json:"nextCursor,omitempty"`
+	Chats   []chatDTO   `json:"chats"`
+	Folders []folderDTO `json:"folders"`
+	Me      meDTO       `json:"me"`
+	// Truncated — выборка диалогов упёрлась в потолок, раскладка по папкам
+	// может быть неполной. Клиент показывает это явно, а не молчит.
+	Truncated bool           `json:"truncated,omitempty"`
+	Stats     dashboardStats `json:"stats"`
+}
+
+type dashboardStats struct {
+	Pages              int `json:"pages"`
+	RawDialogs         int `json:"rawDialogs"`
+	SkippedUnknownPeer int `json:"skippedUnknownPeer"`
+	SkippedNotDialog   int `json:"skippedNotDialog"`
+}
+
+type topicsResponse struct {
+	Topics []topicDTO `json:"topics"`
 }
 
 type historyResponse struct {
@@ -23,6 +37,7 @@ type historyResponse struct {
 type sendMessageRequest struct {
 	Text     string `json:"text"`
 	RandomID string `json:"randomId"`
+	TopicID  int    `json:"topicId,omitempty"`
 }
 
 type sendMessageResponse struct {
@@ -63,11 +78,40 @@ func (s *Server) handleListChats(ctx *fasthttp.RequestCtx) {
 	}
 
 	writeJSON(ctx, fasthttp.StatusOK, chatsResponse{
-		Chats:      chats,
-		Folders:    folders,
-		Me:         mapMe(dashboard.Me),
-		NextCursor: dashboard.NextCursor,
+		Chats:     chats,
+		Folders:   folders,
+		Me:        mapMe(dashboard.Me),
+		Truncated: dashboard.Truncated,
+		Stats: dashboardStats{
+			Pages:              dashboard.Stats.Pages,
+			RawDialogs:         dashboard.Stats.RawDialogs,
+			SkippedUnknownPeer: dashboard.Stats.SkippedUnknownPeer,
+			SkippedNotDialog:   dashboard.Stats.SkippedNotDialog,
+		},
 	})
+}
+
+func (s *Server) handleListTopics(ctx *fasthttp.RequestCtx, chatRef string) {
+	token, ok := s.bearerToken(ctx)
+	if !ok {
+		unauthorized(ctx)
+		return
+	}
+
+	output, err := s.listTopicsUC.Execute(ctx, messenger.ListTopicsInput{
+		SessionToken: token,
+		ChatRef:      chatRef,
+	})
+	if err != nil {
+		s.writeError(ctx, err)
+		return
+	}
+
+	topics := make([]topicDTO, 0, len(output.Topics))
+	for _, t := range output.Topics {
+		topics = append(topics, mapTopic(t))
+	}
+	writeJSON(ctx, fasthttp.StatusOK, topicsResponse{Topics: topics})
 }
 
 func (s *Server) handleChatHistory(ctx *fasthttp.RequestCtx, chatRef string) {
@@ -79,10 +123,12 @@ func (s *Server) handleChatHistory(ctx *fasthttp.RequestCtx, chatRef string) {
 
 	limit, _ := strconv.Atoi(string(ctx.QueryArgs().Peek("limit")))
 	beforeID, _ := strconv.Atoi(string(ctx.QueryArgs().Peek("beforeId")))
+	topicID, _ := strconv.Atoi(string(ctx.QueryArgs().Peek("topicId")))
 
 	output, err := s.openChatUC.Execute(ctx, messenger.OpenChatInput{
 		SessionToken: token,
 		ChatRef:      chatRef,
+		TopicID:      topicID,
 		Limit:        limit,
 		BeforeID:     beforeID,
 	})
@@ -118,6 +164,7 @@ func (s *Server) handleSendMessage(ctx *fasthttp.RequestCtx, chatRef string) {
 	output, err := s.sendMessageUC.Execute(ctx, messenger.SendMessageInput{
 		SessionToken: token,
 		ChatRef:      chatRef,
+		TopicID:      req.TopicID,
 		Text:         req.Text,
 		RandomID:     req.RandomID,
 	})

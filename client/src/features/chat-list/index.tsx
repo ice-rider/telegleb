@@ -20,6 +20,7 @@ export function ChatList(props: ChatListProps) {
   const {
     state,
     isReady,
+    truncated,
     folders,
     archivedCount,
     visibleChats,
@@ -66,6 +67,12 @@ export function ChatList(props: ChatListProps) {
           </div>
         }
       >
+        <Show when={truncated()}>
+          <div class="chat-list__notice">
+            Показаны не все диалоги — папки могут быть неполными. Подробности в консоли.
+          </div>
+        </Show>
+
         <FolderTabs
           folders={folders()}
           archivedCount={archivedCount()}

@@ -39,12 +39,13 @@ func InitApp() (*App, error) {
 	logoutUseCase := auth.NewLogoutUseCase(telegramAdapter, sessionRepository)
 	chatRepository := telegram.NewTelegramChatRepository(telegramAdapter)
 	loadDashboardUseCase := messenger.NewLoadDashboardUseCase(chatRepository)
+	listTopicsUseCase := messenger.NewListTopicsUseCase(chatRepository)
 	messageRepository := telegram.NewTelegramMessageRepository(telegramAdapter)
 	openChatUseCase := messenger.NewOpenChatUseCase(messageRepository)
 	sendMessageUseCase := messenger.NewSendMessageUseCase(messageRepository)
 	mediaRepository := telegram.NewTelegramMediaRepository(telegramAdapter)
 	streamMediaUseCase := messenger.NewStreamMediaUseCase(mediaRepository)
-	server := http.NewServer(configConfig, logger, client, tokenManager, requestCodeUseCase, verifyCodeUseCase, verifyPasswordUseCase, sessionUseCase, logoutUseCase, loadDashboardUseCase, openChatUseCase, sendMessageUseCase, streamMediaUseCase)
+	server := http.NewServer(configConfig, logger, client, tokenManager, requestCodeUseCase, verifyCodeUseCase, verifyPasswordUseCase, sessionUseCase, logoutUseCase, loadDashboardUseCase, listTopicsUseCase, openChatUseCase, sendMessageUseCase, streamMediaUseCase)
 	app := NewApp(configConfig, logger, client, server)
 	return app, nil
 }

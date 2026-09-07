@@ -29,12 +29,44 @@ type Chat struct {
 	FolderIDs           []int
 	Order               int
 	LastMessage         *Message
+	// IsForum — супергруппа с темами. У такого чата нет плоской истории:
+	// сообщения живут внутри тем, поэтому клиент сначала показывает список тем.
+	IsForum bool
+}
+
+// Topic — тема внутри форума-супергруппы. По сути это отдельный чат, у
+// которого есть свои непрочитанные и своя история, но живёт он внутри
+// родительского чата и адресуется его ID.
+type Topic struct {
+	ID                  int
+	Title               string
+	IconColor           int
+	IconEmojiID         int64
+	UnreadCount         int
+	UnreadMentionsCount int
+	Pinned              bool
+	Closed              bool
+	Hidden              bool
+	Order               int
+	LastMessage         *Message
 }
 
 // Dashboard — атомарный снимок: чаты, папки и профиль приезжают одним ответом.
 type Dashboard struct {
-	Me         Me
-	Chats      []Chat
-	Folders    []Folder
-	NextCursor string
+	Me      Me
+	Chats   []Chat
+	Folders []Folder
+	// Truncated — список диалогов упёрся в потолок. Раскладка по папкам в
+	// этом случае неполна, и клиенту стоит об этом сказать.
+	Truncated bool
+	Stats     DashboardStats
+}
+
+// DashboardStats — диагностика загрузки. Нужна, чтобы «в папке 2 чата вместо
+// 13» можно было объяснить числами, а не догадками.
+type DashboardStats struct {
+	Pages              int
+	RawDialogs         int
+	SkippedUnknownPeer int
+	SkippedNotDialog   int
 }

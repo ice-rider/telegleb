@@ -38,8 +38,10 @@ type LoadDashboardOutput struct {
 type OpenChatInput struct {
 	SessionToken string
 	ChatRef      string
-	Limit        int
-	BeforeID     int
+	// TopicID > 0 — история внутри темы форума.
+	TopicID  int
+	Limit    int
+	BeforeID int
 }
 
 func (i OpenChatInput) Peer() (domain.Peer, error) {
@@ -58,6 +60,7 @@ type OpenChatOutput struct {
 type SendMessageInput struct {
 	SessionToken string
 	ChatRef      string
+	TopicID      int
 	Text         string
 	RandomID     string
 }
@@ -110,4 +113,21 @@ func (i StreamMediaInput) Ref() (domain.MediaRef, error) {
 		return domain.MediaRef{}, ErrInvalidMediaRef
 	}
 	return ref, nil
+}
+
+type ListTopicsInput struct {
+	SessionToken string
+	ChatRef      string
+}
+
+func (i ListTopicsInput) Peer() (domain.Peer, error) {
+	peer, err := domain.ParsePeer(i.ChatRef)
+	if err != nil {
+		return domain.Peer{}, ErrInvalidPeer
+	}
+	return peer, nil
+}
+
+type ListTopicsOutput struct {
+	Topics []domain.Topic
 }

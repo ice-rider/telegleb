@@ -27,6 +27,28 @@ func (uc *LoadDashboardUseCase) Execute(ctx context.Context, input LoadDashboard
 	return LoadDashboardOutput{Dashboard: dashboard}, nil
 }
 
+// ListTopicsUseCase отдаёт темы форума-супергруппы.
+type ListTopicsUseCase struct {
+	chatRepo chat.ChatRepository
+}
+
+func NewListTopicsUseCase(chatRepo chat.ChatRepository) *ListTopicsUseCase {
+	return &ListTopicsUseCase{chatRepo: chatRepo}
+}
+
+func (uc *ListTopicsUseCase) Execute(ctx context.Context, input ListTopicsInput) (ListTopicsOutput, error) {
+	peer, err := input.Peer()
+	if err != nil {
+		return ListTopicsOutput{}, err
+	}
+
+	topics, err := uc.chatRepo.GetTopics(ctx, input.SessionToken, peer)
+	if err != nil {
+		return ListTopicsOutput{}, err
+	}
+	return ListTopicsOutput{Topics: topics}, nil
+}
+
 type OpenChatUseCase struct {
 	messageRepo message.MessageRepository
 }
@@ -42,7 +64,7 @@ func (uc *OpenChatUseCase) Execute(ctx context.Context, input OpenChatInput) (Op
 	}
 
 	limit := clampLimit(input.Limit)
-	messages, err := uc.messageRepo.GetHistory(ctx, input.SessionToken, peer, limit, input.BeforeID)
+	messages, err := uc.messageRepo.GetHistory(ctx, input.SessionToken, peer, input.TopicID, limit, input.BeforeID)
 	if err != nil {
 		return OpenChatOutput{}, err
 	}
@@ -74,7 +96,7 @@ func (uc *SendMessageUseCase) Execute(ctx context.Context, input SendMessageInpu
 		return SendMessageOutput{}, err
 	}
 
-	msg, err := uc.messageRepo.Send(ctx, input.SessionToken, peer, input.Text, input.randomID())
+	msg, err := uc.messageRepo.Send(ctx, input.SessionToken, peer, input.TopicID, input.Text, input.randomID())
 	if err != nil {
 		return SendMessageOutput{}, err
 	}

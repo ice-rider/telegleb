@@ -17,7 +17,7 @@ export type Tab =
 type DashboardState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; chats: Chat[]; folders: Folder[]; me: Me; nextCursor?: string }
+  | { status: "ready"; chats: Chat[]; folders: Folder[]; me: Me; truncated: boolean }
   | { status: "error"; message: string };
 
 const [state, setState] = createSignal<DashboardState>({ status: "idle" });
@@ -35,7 +35,7 @@ export function useChatList() {
         chats: dashboard.chats,
         folders: dashboard.folders,
         me: dashboard.me,
-        nextCursor: dashboard.nextCursor,
+        truncated: Boolean(dashboard.truncated),
       });
     } catch (err) {
       setState({ status: "error", message: errorMessage(err) });
@@ -47,6 +47,13 @@ export function useChatList() {
   const folders = createMemo(() => {
     const s = state();
     return s.status === "ready" ? [...s.folders].sort((a, b) => a.order - b.order) : [];
+  });
+
+  // Список диалогов упёрся в потолок — часть чатов в папках отсутствует.
+  // Клиент говорит об этом прямо, а не показывает молча урезанные папки.
+  const truncated = createMemo(() => {
+    const s = state();
+    return s.status === "ready" && s.truncated;
   });
 
   const archivedCount = createMemo(() => {
@@ -88,6 +95,7 @@ export function useChatList() {
   return {
     state,
     isReady,
+    truncated,
     folders,
     archivedCount,
     visibleChats,

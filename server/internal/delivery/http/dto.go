@@ -1,6 +1,7 @@
 package http
 
 import (
+	"strconv"
 	"time"
 
 	"telegleb/internal/core/domain"
@@ -71,6 +72,21 @@ type chatDTO struct {
 	Muted               bool        `json:"muted"`
 	Archived            bool        `json:"archived"`
 	FolderIDs           []int       `json:"folderIds"`
+	Order               int         `json:"order"`
+	IsForum             bool        `json:"isForum"`
+	LastMessage         *messageDTO `json:"lastMessage,omitempty"`
+}
+
+type topicDTO struct {
+	ID                  int         `json:"id"`
+	Title               string      `json:"title"`
+	IconColor           int         `json:"iconColor,omitempty"`
+	IconEmojiID         string      `json:"iconEmojiId,omitempty"`
+	UnreadCount         int         `json:"unreadCount"`
+	UnreadMentionsCount int         `json:"unreadMentionsCount"`
+	Pinned              bool        `json:"pinned"`
+	Closed              bool        `json:"closed"`
+	Hidden              bool        `json:"hidden"`
 	Order               int         `json:"order"`
 	LastMessage         *messageDTO `json:"lastMessage,omitempty"`
 }
@@ -171,9 +187,33 @@ func mapChat(c domain.Chat) chatDTO {
 		Archived:            c.Archived,
 		FolderIDs:           folderIDs,
 		Order:               c.Order,
+		IsForum:             c.IsForum,
 	}
 	if c.LastMessage != nil {
 		msg := mapMessage(*c.LastMessage)
+		dto.LastMessage = &msg
+	}
+	return dto
+}
+
+func mapTopic(t domain.Topic) topicDTO {
+	dto := topicDTO{
+		ID:                  t.ID,
+		Title:               t.Title,
+		IconColor:           t.IconColor,
+		UnreadCount:         t.UnreadCount,
+		UnreadMentionsCount: t.UnreadMentionsCount,
+		Pinned:              t.Pinned,
+		Closed:              t.Closed,
+		Hidden:              t.Hidden,
+		Order:               t.Order,
+	}
+	// id кастомного эмодзи — int64 полного диапазона, в double он не влезает.
+	if t.IconEmojiID != 0 {
+		dto.IconEmojiID = strconv.FormatInt(t.IconEmojiID, 10)
+	}
+	if t.LastMessage != nil {
+		msg := mapMessage(*t.LastMessage)
 		dto.LastMessage = &msg
 	}
 	return dto

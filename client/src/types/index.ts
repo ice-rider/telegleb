@@ -80,6 +80,24 @@ export interface Chat {
   archived: boolean;
   folderIds: number[];
   order: number;
+  /** Супергруппа с темами: плоской истории нет, сначала показывается список тем. */
+  isForum: boolean;
+  lastMessage?: Message;
+}
+
+/** Тема внутри форума-супергруппы — по сути отдельный чат внутри чата. */
+export interface Topic {
+  id: number;
+  title: string;
+  iconColor?: number;
+  /** id кастомного эмодзи строкой: в double int64 не влезает. */
+  iconEmojiId?: string;
+  unreadCount: number;
+  unreadMentionsCount: number;
+  pinned: boolean;
+  closed: boolean;
+  hidden: boolean;
+  order: number;
   lastMessage?: Message;
 }
 
@@ -90,11 +108,20 @@ export interface Folder {
   order: number;
 }
 
+export interface DashboardStats {
+  pages: number;
+  rawDialogs: number;
+  skippedUnknownPeer: number;
+  skippedNotDialog: number;
+}
+
 export interface Dashboard {
   chats: Chat[];
   folders: Folder[];
   me: Me;
-  nextCursor?: string;
+  /** Выборка диалогов упёрлась в потолок — раскладка по папкам может быть неполной. */
+  truncated?: boolean;
+  stats: DashboardStats;
 }
 
 export type NextStep = "code" | "password" | "done";

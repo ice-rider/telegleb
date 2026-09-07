@@ -41,6 +41,9 @@ func (s *Server) setupRouter() fasthttp.RequestHandler {
 			case len(segments) == 1 && method == fasthttp.MethodGet:
 				s.handleListChats(ctx)
 				return
+			case len(segments) == 3 && segments[2] == "topics" && method == fasthttp.MethodGet:
+				s.handleListTopics(ctx, segments[1])
+				return
 			case len(segments) == 3 && segments[2] == "messages":
 				switch method {
 				case fasthttp.MethodGet:

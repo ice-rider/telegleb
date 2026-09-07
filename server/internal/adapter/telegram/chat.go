@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"telegleb/internal/core/domain"
@@ -14,10 +15,17 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// archivePageLimit — сколько архивных диалогов забираем вместе с первой
-// страницей. Архив нужен клиенту целиком сразу, чтобы вкладка «Архив» никогда
-// не оказалась наполовину заполненной.
-const archivePageLimit = 100
+const (
+	// Telegram отдаёт максимум 100 диалогов за запрос.
+	dialogPageSize = 100
+	// Потолки на полную выборку. Список диалогов забирается ЦЕЛИКОМ, а не
+	// первой страницей: принадлежность чата к папке считается по всему
+	// списку, и если чат не попал в выборку, папка молча теряет участника.
+	// Именно поэтому в папке из 13 чатов могло оказаться 2 — остальные
+	// просто не входили в первую сотню по свежести.
+	maxMainDialogs    = 1500
+	maxArchiveDialogs = 500
+)
 
 type TelegramChatRepository struct {
 	adapter *TelegramAdapter
@@ -28,8 +36,7 @@ func NewTelegramChatRepository(adapter *TelegramAdapter) chat.ChatRepository {
 }
 
 // dialogCursor — курсор пагинации диалогов. В MTProto это тройка
-// (offset_date, offset_id, offset_peer), а не порядковый номер: смещение
-// числом здесь не работает в принципе.
+// (offset_date, offset_id, offset_peer), а не порядковый номер.
 type dialogCursor struct {
 	Date int    `json:"d"`
 	ID   int    `json:"i"`
@@ -71,6 +78,7 @@ type dialogInfo struct {
 type dialogPage struct {
 	dialogs []dialogInfo
 	next    string
+	stats   domain.DashboardStats
 }
 
 func (r *TelegramChatRepository) GetDashboard(ctx context.Context, sessionToken string, limit int, cursor string) (domain.Dashboard, error) {
@@ -79,6 +87,7 @@ func (r *TelegramChatRepository) GetDashboard(ctx context.Context, sessionToken 
 		return domain.Dashboard{}, err
 	}
 	api := client.API
+	log := r.adapter.log
 
 	// Профиль нужен раньше остального: без собственного id не отличить
 	// «Избранное» от обычного диалога и не разрешить InputPeerSelf в папках.
@@ -93,30 +102,26 @@ func (r *TelegramChatRepository) GetDashboard(ctx context.Context, sessionToken 
 		filters []tg.DialogFilterClass
 	)
 
-	firstPage := cursor == ""
-
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		var err error
-		main, err = fetchDialogs(gCtx, api, nil, limit, cursor, me.ID)
+		main, err = fetchAllDialogs(gCtx, api, nil, maxMainDialogs, me.ID)
 		return err
 	})
-	if firstPage {
+	g.Go(func() error {
 		archiveFolder := 1
-		g.Go(func() error {
-			var err error
-			archive, err = fetchDialogs(gCtx, api, &archiveFolder, archivePageLimit, "", me.ID)
-			return err
-		})
-		g.Go(func() error {
-			res, err := api.MessagesGetDialogFilters(gCtx)
-			if err != nil {
-				return fmt.Errorf("failed to fetch dialog filters: %w", err)
-			}
-			filters = res.Filters
-			return nil
-		})
-	}
+		var err error
+		archive, err = fetchAllDialogs(gCtx, api, &archiveFolder, maxArchiveDialogs, me.ID)
+		return err
+	})
+	g.Go(func() error {
+		res, err := api.MessagesGetDialogFilters(gCtx)
+		if err != nil {
+			return fmt.Errorf("failed to fetch dialog filters: %w", err)
+		}
+		filters = res.Filters
+		return nil
+	})
 	if err := g.Wait(); err != nil {
 		return domain.Dashboard{}, err
 	}
@@ -125,12 +130,13 @@ func (r *TelegramChatRepository) GetDashboard(ctx context.Context, sessionToken 
 	folders := assignFolders(dialogs, filters, me.ID)
 
 	chats := make([]domain.Chat, 0, len(dialogs))
-	var mainOrder, archiveOrder int
+	var mainOrder, archiveOrder, archivedCount int
 	for i := range dialogs {
 		c := dialogs[i].chat
 		if c.Archived {
 			c.Order = archiveOrder
 			archiveOrder++
+			archivedCount++
 		} else {
 			c.Order = mainOrder
 			mainOrder++
@@ -138,11 +144,56 @@ func (r *TelegramChatRepository) GetDashboard(ctx context.Context, sessionToken 
 		chats = append(chats, c)
 	}
 
+	stats := domain.DashboardStats{
+		Pages:              main.stats.Pages + archive.stats.Pages,
+		RawDialogs:         main.stats.RawDialogs + archive.stats.RawDialogs,
+		SkippedUnknownPeer: main.stats.SkippedUnknownPeer + archive.stats.SkippedUnknownPeer,
+		SkippedNotDialog:   main.stats.SkippedNotDialog + archive.stats.SkippedNotDialog,
+	}
+	truncated := main.next != "" || archive.next != ""
+
+	// Сводка по загрузке. Она отвечает на вопрос «почему в папке мало чатов»
+	// числами: сколько диалогов пришло, сколько отброшено и почему, и
+	// сколько участников получила каждая папка.
+	perFolder := make([]any, 0, len(folders)*2)
+	counts := map[int]int{}
+	for i := range dialogs {
+		for _, fid := range dialogs[i].chat.FolderIDs {
+			counts[fid]++
+		}
+	}
+	for _, f := range folders {
+		perFolder = append(perFolder, fmt.Sprintf("%s(%d)", f.Title, f.ID), counts[f.ID])
+	}
+
+	log.Info("dashboard loaded",
+		slog.String("token", shortToken(sessionToken)),
+		slog.Int("chats", len(chats)),
+		slog.Int("archived", archivedCount),
+		slog.Int("folders", len(folders)),
+		slog.Int("pages", stats.Pages),
+		slog.Int("raw_dialogs", stats.RawDialogs),
+		slog.Int("skipped_unknown_peer", stats.SkippedUnknownPeer),
+		slog.Int("skipped_not_dialog", stats.SkippedNotDialog),
+		slog.Bool("truncated", truncated),
+		slog.Group("per_folder", perFolder...),
+	)
+
+	if stats.SkippedUnknownPeer > 0 {
+		log.Warn("часть диалогов отброшена: пир не найден в словарях ответа",
+			slog.Int("count", stats.SkippedUnknownPeer))
+	}
+	if truncated {
+		log.Warn("список диалогов упёрся в потолок — раскладка по папкам может быть неполной",
+			slog.Int("limit_main", maxMainDialogs), slog.Int("limit_archive", maxArchiveDialogs))
+	}
+
 	return domain.Dashboard{
-		Me:         me,
-		Chats:      chats,
-		Folders:    folders,
-		NextCursor: main.next,
+		Me:        me,
+		Chats:     chats,
+		Folders:   folders,
+		Truncated: truncated,
+		Stats:     stats,
 	}, nil
 }
 
@@ -165,9 +216,38 @@ func fetchMe(ctx context.Context, api *tg.Client) (domain.Me, error) {
 	return domain.Me{}, fmt.Errorf("own user not found in response")
 }
 
-// fetchDialogs забирает одну страницу диалогов. folderID == nil — запрос без
-// фильтра по папке (основной список), иначе конкретная папка Telegram
-// (0 — основная, 1 — архив).
+// fetchAllDialogs выбирает диалоги страницами до исчерпания или до потолка.
+// Возвращает непустой next, если упёрлись в потолок, — значит выборка неполна.
+func fetchAllDialogs(ctx context.Context, api *tg.Client, folderID *int, max int, ownID int64) (dialogPage, error) {
+	var (
+		all    []dialogInfo
+		stats  domain.DashboardStats
+		cursor string
+	)
+
+	for len(all) < max {
+		page, err := fetchDialogs(ctx, api, folderID, dialogPageSize, cursor, ownID)
+		if err != nil {
+			return dialogPage{}, err
+		}
+
+		all = append(all, page.dialogs...)
+		stats.Pages++
+		stats.RawDialogs += page.stats.RawDialogs
+		stats.SkippedUnknownPeer += page.stats.SkippedUnknownPeer
+		stats.SkippedNotDialog += page.stats.SkippedNotDialog
+
+		if page.next == "" {
+			return dialogPage{dialogs: all, stats: stats}, nil
+		}
+		cursor = page.next
+	}
+
+	return dialogPage{dialogs: all, next: cursor, stats: stats}, nil
+}
+
+// fetchDialogs забирает одну страницу. folderID == nil — запрос без фильтра
+// по папке (основной список), иначе конкретная папка (1 — архив).
 func fetchDialogs(ctx context.Context, api *tg.Client, folderID *int, limit int, cursor string, ownID int64) (dialogPage, error) {
 	req := &tg.MessagesGetDialogsRequest{
 		Limit:      limit,
@@ -205,27 +285,34 @@ func buildPage(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserCl
 
 	now := int(time.Now().Unix())
 	page := dialogPage{dialogs: make([]dialogInfo, 0, len(dialogs))}
+	page.stats.RawDialogs = len(dialogs)
 
 	var lastDialog *tg.Dialog
 	for _, dClass := range dialogs {
 		dlg, ok := dClass.(*tg.Dialog)
 		if !ok {
+			page.stats.SkippedNotDialog++
 			continue
 		}
+		lastDialog = dlg
 
-		peer, chatType, title, ok := d.peerOf(dlg.Peer)
+		info, ok := d.peerOf(dlg.Peer)
 		if !ok {
+			// Пир не пришёл в словарях ответа — восстановить accessHash
+			// неоткуда. Считаем такие случаи, чтобы потеря была видна.
+			page.stats.SkippedUnknownPeer++
 			continue
 		}
 
 		folderID, _ := dlg.GetFolderID()
 		muteUntil, _ := dlg.NotifySettings.GetMuteUntil()
 
-		info := dialogInfo{
+		entry := dialogInfo{
 			chat: domain.Chat{
-				Peer:                peer,
-				Type:                chatType,
-				Title:               title,
+				Peer:                info.Peer,
+				Type:                info.Type,
+				Title:               info.Title,
+				IsForum:             info.IsForum,
 				UnreadCount:         dlg.UnreadCount,
 				UnreadMentionsCount: dlg.UnreadMentionsCount,
 				MarkedUnread:        dlg.UnreadMark,
@@ -234,27 +321,26 @@ func buildPage(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserCl
 				Archived:            folderID == 1,
 				FolderIDs:           []int{},
 			},
-			key: peerKey(peer.Kind, peer.ID),
+			key: peerKey(info.Peer.Kind, info.Peer.ID),
 		}
 
-		if user, ok := d.users[peer.ID]; ok && peer.Kind == domain.PeerUser {
-			info.isContact = user.Contact
-			info.isBot = user.Bot
+		if user, ok := d.users[info.Peer.ID]; ok && info.Peer.Kind == domain.PeerUser {
+			entry.isContact = user.Contact
+			entry.isBot = user.Bot
 		}
 
-		if topMsg, found := d.msgs[msgKey{peer: info.key, msgID: dlg.TopMessage}]; found {
-			msg := d.mapMessage(topMsg, peer)
-			info.chat.LastMessage = &msg
+		if topMsg, found := d.msgs[msgKey{peer: entry.key, msgID: dlg.TopMessage}]; found {
+			msg := d.mapMessage(topMsg, info.Peer)
+			entry.chat.LastMessage = &msg
 		}
 
-		page.dialogs = append(page.dialogs, info)
-		lastDialog = dlg
+		page.dialogs = append(page.dialogs, entry)
 	}
 
 	if hasMore && lastDialog != nil {
-		if peer, _, _, ok := d.peerOf(lastDialog.Peer); ok {
-			c := dialogCursor{ID: lastDialog.TopMessage, Peer: peer.Ref()}
-			if last, found := d.msgs[msgKey{peer: peerKey(peer.Kind, peer.ID), msgID: lastDialog.TopMessage}]; found {
+		if info, ok := d.peerOf(lastDialog.Peer); ok {
+			c := dialogCursor{ID: lastDialog.TopMessage, Peer: info.Peer.Ref()}
+			if last, found := d.msgs[msgKey{peer: peerKey(info.Peer.Kind, info.Peer.ID), msgID: lastDialog.TopMessage}]; found {
 				c.Date = last.Date
 			}
 			page.next = encodeCursor(c)
@@ -266,8 +352,8 @@ func buildPage(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserCl
 
 // mergeDialogs склеивает основной список с архивом, отбрасывая повторы.
 // Запрос без folder_id на части слоёв уже возвращает архивные диалоги, а
-// отдельный запрос архива гарантирует, что вкладка не будет пустой; дедупликация
-// делает пересечение этих двух источников безобидным.
+// отдельный запрос архива гарантирует, что вкладка не будет пустой;
+// дедупликация делает пересечение этих двух источников безобидным.
 func mergeDialogs(main, archive []dialogInfo) []dialogInfo {
 	seen := make(map[string]struct{}, len(main)+len(archive))
 	merged := make([]dialogInfo, 0, len(main)+len(archive))

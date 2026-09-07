@@ -81,3 +81,18 @@
   font-size: 14px;
   text-align: center;
 }
+
+.chat-window__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.chat-window__subtitle {
+  font-size: 12px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

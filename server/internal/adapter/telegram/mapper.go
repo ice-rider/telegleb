@@ -24,17 +24,23 @@ type dicts struct {
 	users map[int64]*tg.User
 	chats map[int64]*tg.Chat
 	chans map[int64]*tg.Channel
-	ownID int64
-	msgs  map[msgKey]*tg.Message
+	// Чаты, из которых нас выгнали или которые забанены, приходят отдельными
+	// типами. Без них такие диалоги молча исчезали бы из списка.
+	chatsForbidden map[int64]*tg.ChatForbidden
+	chansForbidden map[int64]*tg.ChannelForbidden
+	ownID          int64
+	msgs           map[msgKey]*tg.Message
 }
 
 func newDicts(chats []tg.ChatClass, users []tg.UserClass, ownID int64) *dicts {
 	d := &dicts{
-		users: make(map[int64]*tg.User, len(users)),
-		chats: make(map[int64]*tg.Chat),
-		chans: make(map[int64]*tg.Channel),
-		ownID: ownID,
-		msgs:  make(map[msgKey]*tg.Message),
+		users:          make(map[int64]*tg.User, len(users)),
+		chats:          make(map[int64]*tg.Chat),
+		chans:          make(map[int64]*tg.Channel),
+		chatsForbidden: make(map[int64]*tg.ChatForbidden),
+		chansForbidden: make(map[int64]*tg.ChannelForbidden),
+		ownID:          ownID,
+		msgs:           make(map[msgKey]*tg.Message),
 	}
 	for _, u := range users {
 		if user, ok := u.(*tg.User); ok {
@@ -47,6 +53,10 @@ func newDicts(chats []tg.ChatClass, users []tg.UserClass, ownID int64) *dicts {
 			d.chats[v.ID] = v
 		case *tg.Channel:
 			d.chans[v.ID] = v
+		case *tg.ChatForbidden:
+			d.chatsForbidden[v.ID] = v
+		case *tg.ChannelForbidden:
+			d.chansForbidden[v.ID] = v
 		}
 	}
 	return d
@@ -64,40 +74,70 @@ func (d *dicts) addMessages(messages []tg.MessageClass) {
 	}
 }
 
+// peerInfo — то, что удалось восстановить о собеседнике по словарям ответа.
+type peerInfo struct {
+	Peer    domain.Peer
+	Type    domain.ChatType
+	Title   string
+	IsForum bool
+}
+
 // peerOf восстанавливает полный адрес чата, доставая accessHash из словарей.
-func (d *dicts) peerOf(p tg.PeerClass) (domain.Peer, domain.ChatType, string, bool) {
+func (d *dicts) peerOf(p tg.PeerClass) (peerInfo, bool) {
 	switch v := p.(type) {
 	case *tg.PeerUser:
 		user, found := d.users[v.UserID]
 		if !found {
-			return domain.Peer{}, "", "", false
+			return peerInfo{}, false
 		}
-		return domain.Peer{Kind: domain.PeerUser, ID: v.UserID, AccessHash: user.AccessHash},
-			domain.ChatTypeDirect, userTitle(user, v.UserID == d.ownID), true
+		return peerInfo{
+			Peer:  domain.Peer{Kind: domain.PeerUser, ID: v.UserID, AccessHash: user.AccessHash},
+			Type:  domain.ChatTypeDirect,
+			Title: userTitle(user, v.UserID == d.ownID),
+		}, true
 
 	case *tg.PeerChat:
-		chat, found := d.chats[v.ChatID]
-		if !found {
-			return domain.Peer{}, "", "", false
+		if chat, found := d.chats[v.ChatID]; found {
+			return peerInfo{
+				Peer:  domain.Peer{Kind: domain.PeerChat, ID: v.ChatID},
+				Type:  domain.ChatTypeGroup,
+				Title: chat.Title,
+			}, true
 		}
-		return domain.Peer{Kind: domain.PeerChat, ID: v.ChatID},
-			domain.ChatTypeGroup, chat.Title, true
+		if chat, found := d.chatsForbidden[v.ChatID]; found {
+			return peerInfo{
+				Peer:  domain.Peer{Kind: domain.PeerChat, ID: v.ChatID},
+				Type:  domain.ChatTypeGroup,
+				Title: chat.Title,
+			}, true
+		}
+		return peerInfo{}, false
 
 	case *tg.PeerChannel:
-		ch, found := d.chans[v.ChannelID]
-		if !found {
-			return domain.Peer{}, "", "", false
+		if ch, found := d.chans[v.ChannelID]; found {
+			// Супергруппа с точки зрения пользователя — группа, а не канал.
+			chatType := domain.ChatTypeChannel
+			if ch.Megagroup {
+				chatType = domain.ChatTypeGroup
+			}
+			return peerInfo{
+				Peer:    domain.Peer{Kind: domain.PeerChannel, ID: v.ChannelID, AccessHash: ch.AccessHash},
+				Type:    chatType,
+				Title:   ch.Title,
+				IsForum: ch.Forum,
+			}, true
 		}
-		// Супергруппа с точки зрения пользователя — группа, а не канал.
-		chatType := domain.ChatTypeChannel
-		if ch.Megagroup {
-			chatType = domain.ChatTypeGroup
+		if ch, found := d.chansForbidden[v.ChannelID]; found {
+			return peerInfo{
+				Peer:  domain.Peer{Kind: domain.PeerChannel, ID: v.ChannelID, AccessHash: ch.AccessHash},
+				Type:  domain.ChatTypeChannel,
+				Title: ch.Title,
+			}, true
 		}
-		return domain.Peer{Kind: domain.PeerChannel, ID: v.ChannelID, AccessHash: ch.AccessHash},
-			chatType, ch.Title, true
+		return peerInfo{}, false
 
 	default:
-		return domain.Peer{}, "", "", false
+		return peerInfo{}, false
 	}
 }
 
