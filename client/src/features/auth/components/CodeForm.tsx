@@ -1,7 +1,7 @@
 import { Show, createSignal } from "solid-js";
-import { Button, Input, Loader } from "~/shared/components";
+import { Button, Icon, Input, Loader } from "~/shared/components";
 import { useAuth } from "../store";
-import "./CodeForm.css";
+import "./AuthForm.css";
 
 export function CodeForm() {
   const { isLoading, error, codeHint, verifyCode } = useAuth();
@@ -14,10 +14,10 @@ export function CodeForm() {
   }
 
   return (
-    <form class="code-form" onSubmit={handleSubmit}>
-      <div class="code-form__icon">🔑</div>
-      <h2 class="code-form__title">Код подтверждения</h2>
-      <p class="code-form__subtitle">{codeHint()}</p>
+    <form class="auth-form" onSubmit={handleSubmit}>
+      <div class="auth-form__icon"><Icon name="key" size={22} /></div>
+      <h2 class="auth-form__title">Код подтверждения</h2>
+      <p class="auth-form__subtitle">{codeHint()}</p>
       <Input
         label="Код"
         type="text"

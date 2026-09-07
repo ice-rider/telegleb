@@ -1,85 +1,113 @@
 .message {
   display: flex;
-  padding: 2px 16px;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 520px;
+  align-self: flex-start;
 }
 
 .message--own {
-  justify-content: flex-end;
+  align-self: flex-end;
 }
 
 .message__bubble {
-  max-width: 65%;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: #f1f1f1;
-  position: relative;
+  padding: 11px 15px;
+  border-radius: 18px 18px 18px 6px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 14.5px;
+  line-height: 1.45;
 }
 
+/* Своё сообщение заливается акцентом — по флагу out, а не по отправителю. */
 .message--own .message__bubble {
-  background: #effdde;
+  border-radius: 18px 18px 6px 18px;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 .message__text {
   margin: 0;
-  font-size: 15px;
-  line-height: 1.4;
-  color: #333;
-  word-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-wrap: pretty;
 }
 
 .message__time {
-  display: block;
-  font-size: 11px;
-  color: #999;
-  text-align: right;
-  margin-top: 4px;
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--text-faint);
 }
 
 .message--own .message__time {
-  color: #6ab76a;
+  align-self: flex-end;
+}
+
+.message__edited {
+  font-style: italic;
+  opacity: 0.8;
 }
 
 .message__sender {
+  margin-bottom: 3px;
   font-size: 13px;
   font-weight: 600;
-  color: #3f8ad8;
-  margin-bottom: 2px;
+  color: var(--accent);
+}
+
+.message--own .message__sender {
+  color: rgba(13, 14, 16, 0.7);
 }
 
 .message__forwarded {
+  margin-bottom: 5px;
   font-size: 12px;
-  color: #8a8a8a;
-  margin-bottom: 4px;
   font-style: italic;
+  color: var(--text-dim);
 }
 
 .message__reply {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border-left: 3px solid #3f8ad8;
-  padding: 2px 8px;
-  margin-bottom: 6px;
-  background: rgba(63, 138, 216, 0.08);
+  margin-bottom: 7px;
+  padding: 3px 10px;
+  border-left: 3px solid var(--accent);
   border-radius: 0 6px 6px 0;
+  background: rgba(201, 243, 29, 0.07);
   font-size: 13px;
+}
+
+.message--own .message__reply {
+  border-left-color: rgba(13, 14, 16, 0.45);
+  background: rgba(13, 14, 16, 0.09);
 }
 
 .message__reply-author {
   font-weight: 600;
-  color: #3f8ad8;
+  color: var(--accent);
+}
+
+.message--own .message__reply-author {
+  color: rgba(13, 14, 16, 0.8);
 }
 
 .message__reply-text {
-  color: #6b6b6b;
+  max-width: 280px;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 260px;
+}
+
+.message--own .message__reply-text {
+  color: rgba(13, 14, 16, 0.65);
 }
 
 .message__link {
-  color: #3f8ad8;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -87,42 +115,59 @@
   text-decoration: underline;
 }
 
+.message--own .message__link {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+
 .message__mention {
-  color: #3f8ad8;
+  color: var(--accent);
+}
+
+.message--own .message__mention {
+  color: rgba(13, 14, 16, 0.8);
 }
 
 .message__code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28);
+  font-family: var(--font-mono);
   font-size: 13px;
-  background: rgba(0, 0, 0, 0.07);
-  border-radius: 4px;
-  padding: 1px 4px;
+}
+
+.message--own .message__code {
+  background: rgba(13, 14, 16, 0.14);
 }
 
 .message__pre {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin: 7px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.28);
+  font-family: var(--font-mono);
   font-size: 13px;
-  background: rgba(0, 0, 0, 0.07);
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin: 6px 0;
   overflow-x: auto;
   white-space: pre;
+}
+
+.message--own .message__pre {
+  background: rgba(13, 14, 16, 0.14);
 }
 
 .message__quote {
   margin: 6px 0;
   padding: 2px 10px;
-  border-left: 3px solid rgba(0, 0, 0, 0.2);
-  color: #555;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
 }
 
 .message__spoiler {
-  background: #999;
+  border-radius: 4px;
+  background: var(--text-faint);
   color: transparent;
-  border-radius: 3px;
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color var(--ease), background var(--ease);
 }
 
 .message__spoiler:hover {
@@ -132,38 +177,38 @@
 
 .message__media {
   display: block;
-  max-width: 320px;
-  max-height: 320px;
-  border-radius: 8px;
-  margin-bottom: 4px;
+  max-width: 340px;
+  max-height: 340px;
+  margin-bottom: 5px;
+  border-radius: var(--radius-sm);
 }
 
 .message__media-placeholder {
-  width: 200px;
-  height: 140px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.06);
-  margin-bottom: 4px;
+  width: 220px;
+  height: 150px;
+  margin-bottom: 5px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .message__attachment {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  margin-bottom: 5px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.22);
   font-size: 13px;
-  color: #4a4a4a;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin-bottom: 4px;
+  color: var(--text-2);
+}
+
+.message--own .message__attachment {
+  background: rgba(13, 14, 16, 0.12);
+  color: var(--accent-fg);
 }
 
 .message__attachment-size {
-  color: #8a8a8a;
+  color: var(--text-dim);
   font-size: 12px;
-}
-
-.message__edited {
-  font-style: italic;
-  opacity: 0.75;
 }

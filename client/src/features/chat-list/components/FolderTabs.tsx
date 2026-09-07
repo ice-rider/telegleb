@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { Icon } from "~/shared/components";
 import type { Folder } from "~/types";
 import type { Tab } from "../store";
 import "./FolderTabs.css";
@@ -44,9 +45,10 @@ export function FolderTabs(props: FolderTabsProps) {
         <button
           class={tabClass({ kind: "archive" })}
           onClick={() => props.onSelect({ kind: "archive" })}
+          title="Архив"
         >
-          🗄 Архив
-          <span class="folder-tab__count">{props.archivedCount}</span>
+          <Icon name="archive" size={14} />
+          <span class="folder-tab__count mono">{props.archivedCount}</span>
         </button>
       </Show>
     </div>

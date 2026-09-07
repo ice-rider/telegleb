@@ -1,63 +1,38 @@
-.btn {
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: none;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.15s, opacity 0.15s;
-  font-family: inherit;
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  font-size: 14.5px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-fg);
+  transition: background var(--ease), opacity var(--ease);
+  /* Минимальная цель нажатия. */
+  min-height: 46px;
 }
 
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.button:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 
-.btn--primary {
-  background-color: #2aabee;
-  color: #fff;
+.button:disabled {
+  background: var(--surface-4);
+  color: var(--text-faint);
+  cursor: default;
 }
 
-.btn--primary:hover:not(:disabled) {
-  background-color: #229ed3;
-}
-
-.btn--secondary {
-  background-color: #f1f1f1;
-  color: #333;
-}
-
-.btn--secondary:hover:not(:disabled) {
-  background-color: #e4e4e4;
-}
-
-.btn--ghost {
-  background-color: transparent;
-  color: #2aabee;
-}
-
-.btn--ghost:hover:not(:disabled) {
-  background-color: #f1f1f1;
-}
-
-.btn--sm {
-  padding: 6px 12px;
-  font-size: 13px;
-}
-
-.btn--md {
-  padding: 10px 20px;
-  font-size: 14px;
-}
-
-.btn--lg {
-  padding: 12px 28px;
-  font-size: 16px;
-}
-
-.btn--full {
+.button--full {
   width: 100%;
+}
+
+.button--ghost {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.button--ghost:hover:not(:disabled) {
+  background: var(--surface-4);
 }

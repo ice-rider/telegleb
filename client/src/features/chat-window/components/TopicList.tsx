@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { Icon } from "~/shared/components";
 import { formatDate, formatLastMessage } from "~/shared/utils";
 import type { Topic } from "~/types";
 import "./TopicList.css";
@@ -8,7 +9,7 @@ interface TopicListProps {
   onSelect: (topic: Topic) => void;
 }
 
-// Цвета иконок тем задаёт Telegram числом; эмодзи-иконки пока не грузим.
+/** Цвета иконок тем задаёт Telegram числом из фиксированного набора. */
 const ICON_COLORS: Record<number, string> = {
   0x6fb9f0: "#6fb9f0",
   0xffd67e: "#ffd67e",
@@ -18,8 +19,10 @@ const ICON_COLORS: Record<number, string> = {
   0xfb6f5f: "#fb6f5f",
 };
 
+const FALLBACK = ["#c9f31d", "#7dd3fc", "#fb923c", "#e879f9", "#a3e635", "#64748b"];
+
 function colorOf(topic: Topic): string {
-  return ICON_COLORS[topic.iconColor ?? 0] ?? "#6fb9f0";
+  return ICON_COLORS[topic.iconColor ?? 0] ?? FALLBACK[topic.id % FALLBACK.length];
 }
 
 export function TopicList(props: TopicListProps) {
@@ -34,17 +37,15 @@ export function TopicList(props: TopicListProps) {
 
             <div class="topic-card__content">
               <div class="topic-card__header">
-                <span class="topic-card__title">
-                  <Show when={topic.pinned}>
-                    <span class="topic-card__flag" title="Закреплена">📌</span>
-                  </Show>
-                  <Show when={topic.closed}>
-                    <span class="topic-card__flag" title="Закрыта">🔒</span>
-                  </Show>
-                  {topic.title}
-                </span>
+                <Show when={topic.pinned}>
+                  <Icon name="pin" size={13} class="topic-card__flag" title="Закреплена" />
+                </Show>
+                <Show when={topic.closed}>
+                  <Icon name="lock" size={13} class="topic-card__flag" title="Закрыта" />
+                </Show>
+                <span class="topic-card__title">{topic.title}</span>
                 <Show when={topic.lastMessage}>
-                  {(msg) => <span class="topic-card__time">{formatDate(msg().createdAt)}</span>}
+                  {(msg) => <span class="topic-card__time mono">{formatDate(msg().createdAt)}</span>}
                 </Show>
               </div>
 
@@ -56,13 +57,13 @@ export function TopicList(props: TopicListProps) {
                         <Show when={msg().senderName && !msg().out}>
                           <span class="topic-card__sender">{msg().senderName}: </span>
                         </Show>
-                        {formatLastMessage(msg().text || "вложение", 48)}
+                        {formatLastMessage(msg().text || "вложение", 52)}
                       </>
                     )}
                   </Show>
                 </span>
                 <Show when={topic.unreadCount > 0}>
-                  <span class="topic-card__badge">{topic.unreadCount}</span>
+                  <span class="topic-card__badge mono">{topic.unreadCount}</span>
                 </Show>
               </div>
             </div>

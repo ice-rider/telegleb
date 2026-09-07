@@ -3,6 +3,7 @@ import { CodeForm } from "./components/CodeForm";
 import { PasswordForm } from "./components/PasswordForm";
 import { PhoneForm } from "./components/PhoneForm";
 import { useAuth } from "./store";
+import "./components/AuthForm.css";
 
 export { useAuth } from "./store";
 

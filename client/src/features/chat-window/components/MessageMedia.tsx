@@ -1,5 +1,6 @@
 import { Show, createResource, onCleanup } from "solid-js";
 import { api } from "~/core/api";
+import { Icon } from "~/shared/components";
 import type { Media } from "~/types";
 
 interface MessageMediaProps {
@@ -26,7 +27,8 @@ export function MessageMedia(props: MessageMediaProps) {
       when={VISUAL_KINDS.has(props.media.kind)}
       fallback={
         <div class="message__attachment">
-          📎 {props.media.fileName || props.media.kind}
+          <Icon name="file" size={16} />
+          {props.media.fileName || props.media.kind}
           <Show when={props.media.size}>
             {(size) => <span class="message__attachment-size">{formatSize(size())}</span>}
           </Show>

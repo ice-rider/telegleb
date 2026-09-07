@@ -1,7 +1,7 @@
 import { Show, createSignal } from "solid-js";
-import { Button, Input, Loader } from "~/shared/components";
+import { Button, Icon, Input, Loader } from "~/shared/components";
 import { useAuth } from "../store";
-import "./PhoneForm.css";
+import "./AuthForm.css";
 
 export function PhoneForm() {
   const { isLoading, error, requestCode } = useAuth();
@@ -14,10 +14,10 @@ export function PhoneForm() {
   }
 
   return (
-    <form class="phone-form" onSubmit={handleSubmit}>
-      <div class="phone-form__icon">📱</div>
-      <h2 class="phone-form__title">Вход в Telegleb</h2>
-      <p class="phone-form__subtitle">
+    <form class="auth-form" onSubmit={handleSubmit}>
+      <div class="auth-form__icon"><Icon name="phone" size={22} /></div>
+      <h2 class="auth-form__title">Вход в Telegleb</h2>
+      <p class="auth-form__subtitle">
         Введите номер телефона для входа в аккаунт Telegram
       </p>
       <Input

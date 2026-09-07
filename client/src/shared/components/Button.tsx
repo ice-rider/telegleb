@@ -1,26 +1,18 @@
 import { splitProps, type JSX } from "solid-js";
 
 interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost";
-  size?: "sm" | "md" | "lg";
+  variant?: "primary" | "ghost";
   fullWidth?: boolean;
 }
 
 export function Button(props: ButtonProps) {
-  const [local, others] = splitProps(props, [
-    "variant",
-    "size",
-    "fullWidth",
-    "class",
-    "children",
-  ]);
+  const [local, others] = splitProps(props, ["variant", "fullWidth", "class", "children"]);
 
   const classes = () =>
     [
-      "btn",
-      `btn--${local.variant ?? "primary"}`,
-      `btn--${local.size ?? "md"}`,
-      local.fullWidth && "btn--full",
+      "button",
+      local.variant === "ghost" && "button--ghost",
+      local.fullWidth && "button--full",
       local.class,
     ]
       .filter(Boolean)

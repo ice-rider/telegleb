@@ -1,0 +1,54 @@
+/*
+ * Токены оформления. Единственное место, где живут цвета, радиусы и тени —
+ * компоненты берут только переменные, чтобы смена темы была одной правкой.
+ *
+ * Направление: тёмное, один кислотный акцент. Насыщенность нейтралей держим
+ * ниже 0.02, иначе серый начинает отдавать в синеву.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Поверхности, от самой глубокой к самой светлой */
+  --bg: #0d0e10;
+  --surface: #121316;
+  --surface-2: #16181c;
+  --surface-3: #1b1e23;
+  --surface-4: #1e2228;
+
+  --border: #24272d;
+  --border-2: #262a31;
+  --border-strong: #2f343c;
+
+  /* Текст */
+  --text: #f2f3f5;
+  --text-2: #e8eaee;
+  --text-muted: #8b9099;
+  --text-dim: #6e747e;
+  --text-faint: #5c626b;
+
+  /* Акцент. Один на всё приложение — активная вкладка, свои сообщения,
+     счётчик непрочитанного, звезда приоритета. */
+  --accent: #c9f31d;
+  --accent-hover: #d7ff3d;
+  --accent-fg: #0d0e10;
+
+  --danger: #ff6b5e;
+  --danger-bg: #2a1a1a;
+  --warning: #ffc94d;
+  --warning-bg: #2a2418;
+
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  --shadow-menu: 0 24px 60px rgba(0, 0, 0, 0.55);
+
+  --font: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* Моноширинный — для времени и счётчиков: табличные цифры не прыгают
+     по ширине при каждом обновлении. */
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease: 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}

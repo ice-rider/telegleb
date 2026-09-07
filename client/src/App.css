@@ -1,36 +1,14 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #e8e8e8;
-  color: #333;
-}
-
-#root {
-  height: 100%;
-}
-
 .app {
   height: 100%;
+  background: var(--bg);
 }
 
+.app__boot,
 .app__auth {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: #fff;
 }
 
 .app__layout {
@@ -39,16 +17,17 @@ body {
 }
 
 .app__sidebar {
-  width: 380px;
-  min-width: 380px;
-  background: #fff;
-  border-right: 1px solid #e8e8e8;
+  width: 384px;
+  min-width: 384px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   overflow: hidden;
 }
 
 .app__main {
   flex: 1;
-  background: #fff;
+  min-width: 0;
+  background: var(--bg);
 }
 
 .app__placeholder {
@@ -57,23 +36,22 @@ body {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #999;
-  gap: 12px;
+  gap: 14px;
+  color: var(--text-faint);
 }
 
 .app__placeholder-icon {
-  font-size: 64px;
+  color: var(--border-strong);
 }
 
 .app__placeholder p {
-  font-size: 16px;
   margin: 0;
+  font-size: 15px;
 }
 
-.app__boot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  background: #fff;
+@media (max-width: 900px) {
+  .app__sidebar {
+    width: 320px;
+    min-width: 320px;
+  }
 }

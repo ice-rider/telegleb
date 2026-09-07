@@ -1,5 +1,5 @@
-import { createSignal, Show } from "solid-js";
-import { Loader } from "../../../shared/components";
+import { Show, createSignal } from "solid-js";
+import { Icon, Loader } from "~/shared/components";
 import "./MessageInput.css";
 
 interface MessageInputProps {
@@ -12,9 +12,9 @@ export function MessageInput(props: MessageInputProps) {
 
   function handleSubmit(e: Event) {
     e.preventDefault();
-    const t = text().trim();
-    if (t && !props.isSending) {
-      props.onSend(t);
+    const value = text().trim();
+    if (value && !props.isSending) {
+      props.onSend(value);
       setText("");
     }
   }
@@ -28,9 +28,10 @@ export function MessageInput(props: MessageInputProps) {
 
   return (
     <form class="message-input" onSubmit={handleSubmit}>
+      <Icon name="attach" size={19} class="message-input__attach" />
       <textarea
         class="message-input__field"
-        placeholder="Напишите сообщение..."
+        placeholder="Написать сообщение"
         rows={1}
         value={text()}
         onInput={(e) => setText(e.currentTarget.value)}
@@ -42,9 +43,7 @@ export function MessageInput(props: MessageInputProps) {
         disabled={!text().trim() || props.isSending}
       >
         <Show when={!props.isSending} fallback={<Loader size="sm" />}>
-          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-          </svg>
+          <Icon name="send" size={18} filled />
         </Show>
       </button>
     </form>

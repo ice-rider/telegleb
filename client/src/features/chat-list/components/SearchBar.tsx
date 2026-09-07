@@ -1,3 +1,4 @@
+import { Icon } from "~/shared/components";
 import "./SearchBar.css";
 
 interface SearchBarProps {
@@ -9,14 +10,11 @@ interface SearchBarProps {
 export function SearchBar(props: SearchBarProps) {
   return (
     <div class="search-bar">
-      <svg class="search-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8" />
-        <path d="M21 21l-4.35-4.35" />
-      </svg>
+      <Icon name="search" size={17} class="search-bar__icon" />
       <input
         class="search-bar__input"
         type="text"
-        placeholder={props.placeholder ?? "Поиск чатов..."}
+        placeholder={props.placeholder ?? "Поиск по чатам"}
         value={props.value}
         onInput={(e) => props.onInput(e.currentTarget.value)}
       />

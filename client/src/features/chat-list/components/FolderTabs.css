@@ -1,7 +1,7 @@
 .folder-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 0 16px 14px 16px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -11,41 +11,41 @@
 }
 
 .folder-tab {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  color: var(--text-muted);
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
   white-space: nowrap;
-  background: #f1f1f1;
-  color: #666;
-  transition: background-color 0.12s, color 0.12s;
-  font-family: inherit;
+  transition: background var(--ease), color var(--ease);
 }
 
 .folder-tab:hover {
-  background: #e4e4e4;
+  background: var(--surface-4);
+  color: var(--text-2);
 }
 
-.folder-tab--active {
-  background: #2aabee;
-  color: #fff;
-}
-
+.folder-tab--active,
 .folder-tab--active:hover {
-  background: #229ed3;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
 }
 
 .folder-tab__icon {
-  margin-right: 4px;
+  font-size: 13px;
 }
 
 .folder-tab__count {
-  margin-left: 6px;
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 9px;
-  padding: 0 6px;
   font-size: 11px;
-  line-height: 16px;
+  color: var(--text-dim);
+}
+
+.folder-tab--active .folder-tab__count {
+  color: rgba(13, 14, 16, 0.6);
 }

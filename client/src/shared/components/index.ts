@@ -7,3 +7,5 @@ export { Button } from "./Button";
 export { Input } from "./Input";
 export { Avatar } from "./Avatar";
 export { Loader } from "./Loader";
+export { Icon } from "./Icon";
+export type { IconName } from "./Icon";

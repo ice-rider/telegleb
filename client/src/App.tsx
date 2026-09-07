@@ -2,7 +2,7 @@ import { Match, Show, Switch, onMount } from "solid-js";
 import { AuthFeature, useAuth } from "./features/auth";
 import { ChatList } from "./features/chat-list";
 import { ChatWindow, useChatWindow } from "./features/chat-window";
-import { Loader } from "./shared/components";
+import { Icon, Loader } from "./shared/components";
 import "./App.css";
 
 export default function App() {
@@ -45,7 +45,7 @@ export default function App() {
                 keyed
                 fallback={
                   <div class="app__placeholder">
-                    <div class="app__placeholder-icon">💬</div>
+                    <Icon name="chat" size={56} class="app__placeholder-icon" />
                     <p>Выберите чат</p>
                   </div>
                 }

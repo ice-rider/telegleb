@@ -1,5 +1,5 @@
 import { For, Show, onMount } from "solid-js";
-import { Loader } from "~/shared/components";
+import { Icon, Loader } from "~/shared/components";
 import type { Chat } from "~/types";
 import { ChatCard } from "./components/ChatCard";
 import { FolderTabs } from "./components/FolderTabs";
@@ -36,10 +36,19 @@ export function ChatList(props: ChatListProps) {
   return (
     <div class="chat-list">
       <div class="chat-list__header">
-        <h2 class="chat-list__title">Чаты</h2>
-        <button class="chat-list__logout" onClick={props.onLogout} title="Выйти">
-          ⏻
-        </button>
+        <div class="chat-list__brand">
+          <h2 class="chat-list__title">telegleb</h2>
+          <span class="chat-list__version mono">V1</span>
+        </div>
+        <div class="chat-list__actions">
+          <button
+            class="chat-list__action chat-list__action--danger"
+            onClick={props.onLogout}
+            title="Выйти"
+          >
+            <Icon name="logout" size={17} />
+          </button>
+        </div>
       </div>
 
       <SearchBar value={query()} onInput={setQuery} />

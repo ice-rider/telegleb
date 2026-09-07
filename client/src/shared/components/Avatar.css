@@ -2,24 +2,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
   flex-shrink: 0;
   overflow: hidden;
+  font-weight: 600;
+  /* Скруглённый квадрат, а не круг: он лучше держит форму рядом с
+     прямоугольными карточками чатов. */
+  border-radius: 15px;
 }
 
 .avatar--sm {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 12px;
 }
 
 .avatar--md {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
+  font-size: 15px;
 }
 
 .avatar--lg {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  font-size: 20px;
 }
 
 .avatar__img {
@@ -29,19 +37,6 @@
 }
 
 .avatar__initials {
-  color: #fff;
-  font-weight: 600;
+  letter-spacing: 0.01em;
   user-select: none;
-}
-
-.avatar--sm .avatar__initials {
-  font-size: 12px;
-}
-
-.avatar--md .avatar__initials {
-  font-size: 15px;
-}
-
-.avatar--lg .avatar__initials {
-  font-size: 19px;
 }
