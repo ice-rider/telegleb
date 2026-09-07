@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+    a { color: #c9f31d; text-decoration: none; }
+    a:hover { color: #dcff5c; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #0d0e10; color: #f2f3f5; overflow: hidden;">
+
+  <div style="width: 384px; min-width: 384px; display: flex; flex-direction: column; background: #121316; border-right: 1px solid #24272d; padding-top: 20px;">
+    <div style="padding: 0 20px 16px 20px; font-size: 21px; font-weight: 700; letter-spacing: -0.03em;">telegleb</div>
+    <div style="display: flex; gap: 6px; padding: 0 16px 14px 16px;">
+      <div style="padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; background: #1b1e23; color: #9aa1ac;">Все</div>
+      <div style="padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #c9f31d; color: #0d0e10;">Работа</div>
+      <div style="padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; background: #1b1e23; color: #9aa1ac;">Каналы</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 10px;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 14px; background: #c9f31d;">
+        <div style="width: 46px; height: 46px; border-radius: 15px; background: rgba(13,14,16,.14); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #0d0e10;">TD</div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0d0e10" stroke-width="1.9" stroke-linecap="round" style="flex-shrink: 0;"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12.5h5"/></svg>
+            <span style="font-size: 14.5px; font-weight: 600; color: #0d0e10;">Telegleb / dev</span>
+            <span class="mono" style="margin-left: auto; font-size: 11px; color: rgba(13,14,16,.55);">14:18</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="flex: 1; min-width: 0; font-size: 13.5px; color: rgba(13,14,16,.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Глеб: контракт v1 задеплоен</span>
+            <span class="mono" style="background: #0d0e10; color: #c9f31d; font-size: 11px; min-width: 21px; height: 21px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 6px;">12</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 14px;">
+        <div style="width: 46px; height: 46px; border-radius: 15px; background: #25353a; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #98c9d4;">СД</div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 14.5px; font-weight: 600; color: #e8eaee;">Курс: системный дизайн</span>
+            <span class="mono" style="margin-left: auto; font-size: 11px; color: #5c626b;">10:15</span>
+          </div>
+          <span style="font-size: 13.5px; color: #8b9099; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Артём: дедлайн перенесли</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- СПИСОК ТЕМ: у форума нет плоской истории, поэтому чат открывается темами -->
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <div style="display: flex; align-items: center; gap: 14px; padding: 16px 26px; border-bottom: 1px solid #24272d;">
+      <div style="width: 34px; height: 34px; border-radius: 11px; background: #1b1e23; display: flex; align-items: center; justify-content: center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9aa1ac" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 15.5px; font-weight: 600;">Telegleb / dev</span>
+        <span style="font-size: 12.5px; color: #6e747e;">супергруппа с темами · 6 тем</span>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 11px; background: #1b1e23;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c9f31d" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span style="font-size: 13px; font-weight: 500; color: #c9f31d;">Новая тема</span>
+      </div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; overflow: hidden;">
+      <sc-for list="{{topics}}" as="t" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 14px; padding: 13px 14px; border-radius: 15px; background: {{t.bg}};">
+          <div style="width: 42px; height: 42px; min-width: 42px; border-radius: 13px; background: {{t.color}}; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #0d0e10;">{{t.letter}}</div>
+
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+            <div style="display: flex; align-items: center; gap: 7px;">
+              <sc-if value="{{t.pinned}}" hint-placeholder-val="{{true}}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6e747e" stroke-width="1.9" stroke-linecap="round" style="flex-shrink: 0;"><path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/></svg>
+              </sc-if>
+              <sc-if value="{{t.closed}}" hint-placeholder-val="{{true}}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6e747e" stroke-width="1.9" stroke-linecap="round" style="flex-shrink: 0;"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></svg>
+              </sc-if>
+              <span style="font-size: 14.5px; font-weight: 600; color: #e8eaee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{t.title}}</span>
+              <span class="mono" style="margin-left: auto; font-size: 11px; color: #5c626b; flex-shrink: 0;">{{t.time}}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="flex: 1; min-width: 0; font-size: 13.5px; color: #8b9099; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span style="color: #6e747e;">{{t.author}}</span>{{t.preview}}</span>
+              <sc-if value="{{t.unread}}" hint-placeholder-val="{{true}}">
+                <span class="mono" style="background: #c9f31d; color: #0d0e10; font-size: 11px; min-width: 21px; height: 21px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 6px; flex-shrink: 0;">{{t.unread}}</span>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      topics: [
+        { letter: 'О', color: '#c9f31d', title: 'Общее', time: '14:18', author: 'Глеб: ', preview: 'контракт v1 задеплоен', unread: '12', pinned: true, closed: false, bg: '#16181c' },
+        { letter: 'Д', color: '#7dd3fc', title: 'Дизайн', time: '13:52', author: 'Ольга: ', preview: 'выложила макеты списка чатов', unread: '3', pinned: true, closed: false, bg: 'transparent' },
+        { letter: 'Б', color: '#fb923c', title: 'Баги', time: '12:07', author: 'Артём: ', preview: 'в папке показывается 2 чата вместо 13', unread: '', pinned: false, closed: false, bg: 'transparent' },
+        { letter: 'Р', color: '#e879f9', title: 'Релизы', time: 'вчера', author: 'Глеб: ', preview: 'v1.0.0 — темы форумов, папки, TLS', unread: '', pinned: false, closed: false, bg: 'transparent' },
+        { letter: 'И', color: '#a3e635', title: 'Идеи', time: 'вчера', author: 'Маша: ', preview: 'приоритетные чаты грузить первыми', unread: '5', pinned: false, closed: false, bg: 'transparent' },
+        { letter: 'А', color: '#64748b', title: 'Архив обсуждений', time: '2 сен', author: 'Глеб: ', preview: 'закрыл, всё переехало в Общее', unread: '', pinned: false, closed: true, bg: 'transparent' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

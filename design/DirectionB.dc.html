@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: "Archivo", ui-sans-serif, system-ui, sans-serif; }
+    a { color: #ff3b1f; } a:hover { color: #d92e14; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #f2f0eb; color: #0a0a0a; overflow: hidden;">
+
+  <div style="width: 400px; min-width: 400px; display: flex; flex-direction: column; border-right: 2px solid #0a0a0a; background: #f2f0eb;">
+
+    <div style="padding: 24px 22px; border-bottom: 2px solid #0a0a0a; display: flex; align-items: baseline; justify-content: space-between;">
+      <span style="font-size: 26px; font-weight: 800; letter-spacing: -0.045em; text-transform: uppercase;">Telegleb</span>
+      <span class="mono" style="font-size: 11px; letter-spacing: 0.1em;">214 ЧАТОВ</span>
+    </div>
+
+    <div style="padding: 16px 22px; border-bottom: 2px solid #0a0a0a;">
+      <div class="mono" style="border: 2px solid #0a0a0a; padding: 11px 13px; font-size: 13px; color: #6b665e; background: #fff;">ПОИСК /</div>
+    </div>
+
+    <div style="display: flex; border-bottom: 2px solid #0a0a0a;">
+      <div class="mono" style="flex: 1; padding: 12px 0; text-align: center; font-size: 11.5px; font-weight: 500; letter-spacing: 0.08em; background: #0a0a0a; color: #f2f0eb;">ВСЕ</div>
+      <div class="mono" style="flex: 1; padding: 12px 0; text-align: center; font-size: 11.5px; letter-spacing: 0.08em; border-left: 2px solid #0a0a0a;">РАБОТА</div>
+      <div class="mono" style="flex: 1; padding: 12px 0; text-align: center; font-size: 11.5px; letter-spacing: 0.08em; border-left: 2px solid #0a0a0a;">АРХИВ</div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column;">
+      <sc-for list="{{chats}}" as="c" hint-placeholder-count="6">
+        <div style="display: flex; gap: 14px; padding: 15px 22px; border-bottom: 1px solid #d6d2c8; background: {{c.bg}};">
+          <div style="width: 44px; height: 44px; min-width: 44px; border: 2px solid #0a0a0a; background: {{c.avatar}}; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800;">{{c.initials}}</div>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{c.title}}</span>
+              <span class="mono" style="margin-left: auto; font-size: 11px; color: #6b665e;">{{c.time}}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="flex: 1; min-width: 0; font-size: 13.5px; color: #55504a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{c.preview}}</span>
+              <sc-if value="{{c.unread}}" hint-placeholder-val="{{true}}">
+                <span class="mono" style="background: #ff3b1f; color: #fff; font-size: 11px; font-weight: 500; padding: 2px 7px; flex-shrink: 0;">{{c.unread}}</span>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div style="padding: 20px 30px; border-bottom: 2px solid #0a0a0a; display: flex; align-items: center; gap: 14px;">
+      <div style="width: 40px; height: 40px; border: 2px solid #0a0a0a; background: #ffd84d; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">ОВ</div>
+      <div style="display: flex; flex-direction: column;">
+        <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.02em;">ОЛЬГА ВЕТРОВА</span>
+        <span class="mono" style="font-size: 11px; color: #6b665e; letter-spacing: 0.05em;">ONLINE · 4 МИН НАЗАД</span>
+      </div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 30px; overflow: hidden;">
+      <div class="mono" style="align-self: center; font-size: 11px; letter-spacing: 0.12em; color: #6b665e;">— 7 СЕНТЯБРЯ —</div>
+      <sc-for list="{{messages}}" as="m" hint-placeholder-count="5">
+        <div style="max-width: 520px; align-self: {{m.align}}; border: 2px solid #0a0a0a; background: {{m.bg}}; color: {{m.fg}}; padding: 13px 17px; font-size: 14.5px; line-height: 1.45; box-shadow: {{m.shadow}};">{{m.text}}</div>
+      </sc-for>
+    </div>
+
+    <div style="padding: 0 30px 30px 30px; display: flex; gap: 12px;">
+      <div class="mono" style="flex: 1; border: 2px solid #0a0a0a; background: #fff; padding: 15px 17px; font-size: 13px; color: #6b665e;">СООБЩЕНИЕ...</div>
+      <div class="mono" style="border: 2px solid #0a0a0a; background: #ff3b1f; color: #fff; padding: 15px 26px; font-size: 13px; font-weight: 500; letter-spacing: 0.06em; box-shadow: 4px 4px 0 #0a0a0a;">SEND</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      chats: [
+        { initials: 'ОВ', avatar: '#ffd84d', title: 'Ольга Ветрова', time: '14:32', preview: 'ок, договорились на 19:00', unread: '2', bg: '#e6e2d8' },
+        { initials: 'TD', avatar: '#9ec8ff', title: 'Telegleb / dev', time: '14:18', preview: 'Глеб: контракт v1 задеплоен', unread: '12', bg: 'transparent' },
+        { initials: 'ИЗ', avatar: '#c8e6a0', title: 'Избранное', time: '13:04', preview: 'ссылка на доклад про MTProto', unread: '', bg: 'transparent' },
+        { initials: 'М', avatar: '#f5b8a0', title: 'Маша', time: '11:22', preview: 'Вы: сейчас скину', unread: '', bg: 'transparent' },
+        { initials: 'СД', avatar: '#a8d8dd', title: 'Курс: системный дизайн', time: '10:15', preview: 'Артём: дедлайн перенесли', unread: '4', bg: 'transparent' },
+        { initials: 'Р', avatar: '#d8c3a5', title: 'Родители', time: 'вчера', preview: 'Мама: не забудь позвонить', unread: '', bg: 'transparent' },
+      ],
+      messages: [
+        { align: 'flex-start', bg: '#fff', fg: '#0a0a0a', shadow: 'none', text: 'Привет! Успеешь сегодня посмотреть макеты?' },
+        { align: 'flex-end', bg: '#ff3b1f', fg: '#fff', shadow: '4px 4px 0 #0a0a0a', text: 'Да, после обеда сяду' },
+        { align: 'flex-start', bg: '#fff', fg: '#0a0a0a', shadow: 'none', text: 'Последняя версия лежит в теме «Дизайн» в рабочем чате' },
+        { align: 'flex-end', bg: '#ff3b1f', fg: '#fff', shadow: '4px 4px 0 #0a0a0a', text: 'Видел. На узком экране кнопки в шапке разъезжаются' },
+        { align: 'flex-start', bg: '#fff', fg: '#0a0a0a', shadow: 'none', text: 'ок, договорились на 19:00' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

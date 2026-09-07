@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Karla:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: "Karla", ui-sans-serif, system-ui, sans-serif; }
+    a { color: #c26a4a; } a:hover { color: #a4553a; }
+    .serif { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #f7f3ec; color: #2b2825; overflow: hidden;">
+
+  <div style="width: 392px; min-width: 392px; display: flex; flex-direction: column; background: #fdfbf7; border-right: 1px solid #e6ded1;">
+
+    <div style="padding: 30px 26px 18px 26px; display: flex; align-items: baseline; justify-content: space-between;">
+      <span class="serif" style="font-size: 30px; letter-spacing: -0.01em;">Telegleb</span>
+      <span style="font-size: 12px; color: #9a9086;">214</span>
+    </div>
+
+    <div style="padding: 0 22px 16px 22px;">
+      <div style="display: flex; align-items: center; gap: 10px; background: #f2ece2; border-radius: 999px; padding: 11px 16px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a89c8f" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+        <span style="font-size: 14px; color: #a89c8f;">Поиск</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 22px; padding: 0 26px 8px 26px; border-bottom: 1px solid #ece4d8;">
+      <div style="padding-bottom: 11px; font-size: 14px; font-weight: 600; color: #2b2825; border-bottom: 2px solid #c26a4a;">Все</div>
+      <div style="padding-bottom: 11px; font-size: 14px; color: #9a9086;">Работа</div>
+      <div style="padding-bottom: 11px; font-size: 14px; color: #9a9086;">Каналы</div>
+      <div style="padding-bottom: 11px; font-size: 14px; color: #9a9086;">Архив</div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; padding: 8px 14px;">
+      <sc-for list="{{chats}}" as="c" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 14px; padding: 14px 12px; border-radius: 18px; background: {{c.bg}};">
+          <div style="width: 48px; height: 48px; min-width: 48px; border-radius: 50%; background: {{c.avatar}}; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; color: #fdfbf7;">{{c.initials}}</div>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{c.title}}</span>
+              <span style="margin-left: auto; font-size: 12px; color: #a89c8f; flex-shrink: 0;">{{c.time}}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="flex: 1; min-width: 0; font-size: 13.5px; color: #8a8178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{c.preview}}</span>
+              <sc-if value="{{c.unread}}" hint-placeholder-val="{{true}}">
+                <span style="background: #c26a4a; color: #fdfbf7; font-size: 11.5px; font-weight: 500; min-width: 21px; height: 21px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 6px; flex-shrink: 0;">{{c.unread}}</span>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div style="padding: 24px 34px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #e6ded1;">
+      <div style="width: 44px; height: 44px; border-radius: 50%; background: #b5836a; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fdfbf7;">ОВ</div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span class="serif" style="font-size: 22px;">Ольга Ветрова</span>
+        <span style="font-size: 12.5px; color: #a89c8f;">была в сети 4 минуты назад</span>
+      </div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 34px; overflow: hidden;">
+      <div style="align-self: center; font-size: 12px; color: #a89c8f;">7 сентября</div>
+      <sc-for list="{{messages}}" as="m" hint-placeholder-count="5">
+        <div style="max-width: 500px; align-self: {{m.align}}; background: {{m.bg}}; color: {{m.fg}}; padding: 13px 18px; border-radius: {{m.radius}}; font-size: 14.5px; line-height: 1.5; box-shadow: 0 1px 2px rgba(43,40,37,.05);">{{m.text}}</div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px; background: #fdfbf7; border-radius: 999px; margin: 0 34px 30px 34px; padding: 8px 8px 8px 22px;">
+      <span style="flex: 1; font-size: 14.5px; color: #a89c8f;">Написать сообщение</span>
+      <div style="width: 42px; height: 42px; border-radius: 50%; background: #c26a4a; display: flex; align-items: center; justify-content: center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fdfbf7" stroke="none"><path d="M3 20.5l18-8.5L3 3.5V10l12 2-12 2z"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      chats: [
+        { initials: 'ОВ', avatar: '#b5836a', title: 'Ольга Ветрова', time: '14:32', preview: 'ок, договорились на 19:00', unread: '2', bg: '#f2ece2' },
+        { initials: 'TD', avatar: '#7f95ab', title: 'Telegleb / dev', time: '14:18', preview: 'Глеб: контракт v1 задеплоен', unread: '12', bg: 'transparent' },
+        { initials: 'ИЗ', avatar: '#8ba077', title: 'Избранное', time: '13:04', preview: 'ссылка на доклад про MTProto', unread: '', bg: 'transparent' },
+        { initials: 'М', avatar: '#c08b93', title: 'Маша', time: '11:22', preview: 'Вы: сейчас скину', unread: '', bg: 'transparent' },
+        { initials: 'СД', avatar: '#77a0a5', title: 'Курс: системный дизайн', time: '10:15', preview: 'Артём: дедлайн перенесли', unread: '4', bg: 'transparent' },
+        { initials: 'Р', avatar: '#a89272', title: 'Родители', time: 'вчера', preview: 'Мама: не забудь позвонить', unread: '', bg: 'transparent' },
+      ],
+      messages: [
+        { align: 'flex-start', bg: '#fdfbf7', fg: '#2b2825', radius: '20px 20px 20px 6px', text: 'Привет! Успеешь сегодня посмотреть макеты?' },
+        { align: 'flex-end', bg: '#c26a4a', fg: '#fdfbf7', radius: '20px 20px 6px 20px', text: 'Да, после обеда сяду' },
+        { align: 'flex-start', bg: '#fdfbf7', fg: '#2b2825', radius: '20px 20px 20px 6px', text: 'Последняя версия лежит в теме «Дизайн» в рабочем чате' },
+        { align: 'flex-end', bg: '#c26a4a', fg: '#fdfbf7', radius: '20px 20px 6px 20px', text: 'Видел. На узком экране кнопки в шапке разъезжаются' },
+        { align: 'flex-start', bg: '#fdfbf7', fg: '#2b2825', radius: '20px 20px 20px 6px', text: 'ок, договорились на 19:00' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

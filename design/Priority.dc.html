@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+    a { color: #c9f31d; text-decoration: none; }
+    a:hover { color: #dcff5c; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; background: #0d0e10; color: #f2f3f5; overflow: hidden;">
+
+  <div style="width: 384px; min-width: 384px; display: flex; flex-direction: column; background: #121316; border-right: 1px solid #24272d; padding-top: 20px;">
+    <div style="padding: 0 20px 16px 20px; font-size: 21px; font-weight: 700; letter-spacing: -0.03em;">telegleb</div>
+
+    <div style="display: flex; gap: 6px; padding: 0 16px 12px 16px;">
+      <div style="padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #c9f31d; color: #0d0e10; display: flex; align-items: center; gap: 6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="#0d0e10" stroke="none"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"/></svg>
+        Важное
+      </div>
+      <div style="padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; background: #1b1e23; color: #9aa1ac;">Все</div>
+      <div style="padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; background: #1b1e23; color: #9aa1ac;">Работа</div>
+    </div>
+
+    <!-- Двухфазная загрузка: приоритетные пришли, остальные догружаются -->
+    <div style="margin: 0 16px 14px 16px; padding: 12px 14px; border-radius: 13px; background: #16181c; border: 1px solid #262a31; display: flex; flex-direction: column; gap: 9px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 12.5px; color: #9aa1ac;">Приоритетные загружены</span>
+        <span class="mono" style="font-size: 11.5px; color: #6e747e;">6 / 214</span>
+      </div>
+      <div style="height: 4px; border-radius: 999px; background: #262a31; overflow: hidden;">
+        <div style="width: 34%; height: 100%; background: #c9f31d; border-radius: 999px;"></div>
+      </div>
+      <span style="font-size: 11.5px; color: #5c626b; line-height: 1.4;">Остальные чаты и архив догружаются в фоне</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 10px;">
+      <sc-for list="{{chats}}" as="c" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 14px; background: {{c.bg}}; opacity: {{c.opacity}};">
+          <div style="width: 46px; height: 46px; min-width: 46px; border-radius: 15px; background: {{c.avatarBg}}; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: {{c.avatarFg}};">{{c.initials}}</div>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <sc-if value="{{c.priority}}" hint-placeholder-val="{{true}}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="#c9f31d" stroke="none" style="flex-shrink: 0;"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"/></svg>
+              </sc-if>
+              <span style="font-size: 14.5px; font-weight: 600; color: #e8eaee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{c.title}}</span>
+              <span class="mono" style="margin-left: auto; font-size: 11px; color: #5c626b;">{{c.time}}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="flex: 1; min-width: 0; font-size: 13.5px; color: #8b9099; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{c.preview}}</span>
+              <sc-if value="{{c.unread}}" hint-placeholder-val="{{true}}">
+                <span class="mono" style="background: #c9f31d; color: #0d0e10; font-size: 11px; min-width: 21px; height: 21px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 6px; flex-shrink: 0;">{{c.unread}}</span>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- Контекстное меню чата: как ставится приоритет -->
+  <div style="flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; background: #0d0e10;">
+    <div style="display: flex; flex-direction: column; gap: 28px; align-items: center; max-width: 620px; padding: 0 40px;">
+
+      <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center;">
+        <h2 style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.03em; color: #f2f3f5;">Важные чаты грузятся первыми</h2>
+        <p style="margin: 0; font-size: 15px; line-height: 1.55; color: #8b9099; max-width: 460px; text-wrap: pretty;">После долгого перерыва клиент не тянет всё подряд. Сначала приезжают отмеченные чаты, архив с тысячами сообщений — в самом конце.</p>
+      </div>
+
+      <div style="width: 292px; background: #16181c; border: 1px solid #262a31; border-radius: 16px; padding: 7px; display: flex; flex-direction: column; gap: 1px; box-shadow: 0 24px 60px rgba(0,0,0,.55);">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 11px; background: #1e2228;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="#c9f31d" stroke="none"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"/></svg>
+          <span style="font-size: 14px; font-weight: 500; color: #c9f31d;">Отметить важным</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 11px;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa1ac" stroke-width="1.8" stroke-linecap="round"><path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/></svg>
+          <span style="font-size: 14px; color: #cfd4da;">Закрепить</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 11px;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa1ac" stroke-width="1.8" stroke-linecap="round"><path d="M6 8.5a6 6 0 0 1 12 0c0 4 1.6 5.5 1.6 5.5H4.4S6 12.5 6 8.5z"/><path d="M10 18a2 2 0 0 0 4 0"/><path d="M4 4l16 16"/></svg>
+          <span style="font-size: 14px; color: #cfd4da;">Выключить уведомления</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 11px;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa1ac" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h16v11H4z"/><path d="M2 5h20v3H2zM10 12h4"/></svg>
+          <span style="font-size: 14px; color: #cfd4da;">В архив</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      chats: [
+        { initials: 'ОВ', avatarBg: '#2f3640', avatarFg: '#dfe3e8', title: 'Ольга Ветрова', time: '14:32', preview: 'ок, договорились на 19:00', unread: '2', priority: true, opacity: '1', bg: 'transparent' },
+        { initials: 'TD', avatarBg: '#243040', avatarFg: '#9dc0e8', title: 'Telegleb / dev', time: '14:18', preview: 'Глеб: контракт v1 задеплоен', unread: '12', priority: true, opacity: '1', bg: 'transparent' },
+        { initials: 'М', avatarBg: '#3d2f2a', avatarFg: '#e0b8a4', title: 'Маша', time: '11:22', preview: 'Вы: сейчас скину', unread: '', priority: true, opacity: '1', bg: 'transparent' },
+        { initials: 'Р', avatarBg: '#38312a', avatarFg: '#d8c3a5', title: 'Родители', time: 'вчера', preview: 'Мама: не забудь позвонить', unread: '1', priority: true, opacity: '1', bg: 'transparent' },
+        { initials: 'СД', avatarBg: '#25353a', avatarFg: '#98c9d4', title: 'Курс: системный дизайн', time: '10:15', preview: 'Артём: дедлайн перенесли', unread: '4', priority: true, opacity: '1', bg: 'transparent' },
+        { initials: 'ИЗ', avatarBg: '#2a2f26', avatarFg: '#c2d69a', title: 'Избранное', time: '13:04', preview: 'ссылка на доклад про MTProto', unread: '', priority: true, opacity: '1', bg: 'transparent' },
+        { initials: '', avatarBg: '#1b1e23', avatarFg: '#1b1e23', title: '', time: '', preview: 'загружается…', unread: '', priority: false, opacity: '0.35', bg: 'transparent' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
