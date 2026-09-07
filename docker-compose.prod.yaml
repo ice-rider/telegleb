@@ -1,3 +1,9 @@
+# Прод-развёртывание. Секреты берутся из .env рядом с этим файлом
+# (см. deploy/env.example); в репозиторий .env не коммитится.
+#
+# Образы собираются заранее и загружаются в локальный демон, поэтому
+# pull_policy: never — иначе compose подтянет устаревший :latest из GHCR.
+
 services:
   redis:
     image: redis:7.2-alpine
@@ -8,40 +14,58 @@ services:
     networks:
       - telegleb_network
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   backend:
     image: ghcr.io/ice-rider/telegleb/backend:latest
+    pull_policy: never
     container_name: telegleb_backend
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       - APP_ENV=production
-      - LOG_LEVEL=debug
+      - HTTP_PORT=8080
+      - LOG_LEVEL=${LOG_LEVEL:-info}
       - LOG_JSON=true
 
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_TIMEOUT=5s
 
-      - JWT_SECRET=CHANGE_ME
+      # Обязательные: без них контейнер не должен подниматься молча.
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET не задан в .env}
+      - TG_APP_ID=${TG_APP_ID:?TG_APP_ID не задан в .env}
+      - TG_APP_HASH=${TG_APP_HASH:?TG_APP_HASH не задан в .env}
 
-      - TG_APP_ID=CHANGE_ME
-      - TG_APP_HASH=CHANGE_ME
+      # MTProxy: если пусто, подключение идёт напрямую.
+      - TG_PROXY_ADDR=${TG_PROXY_ADDR:-}
+      - TG_PROXY_SECRET=${TG_PROXY_SECRET:-}
     networks:
       - telegleb_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend:
     image: ghcr.io/ice-rider/telegleb/frontend:latest
+    pull_policy: never
     container_name: telegleb_frontend
     restart: unless-stopped
-    depends_on:
-      - backend
     networks:
       - telegleb_network
 
   proxy:
     image: ghcr.io/ice-rider/telegleb/proxy:latest
+    pull_policy: never
     container_name: telegleb_proxy
     restart: unless-stopped
     depends_on:
@@ -49,6 +73,11 @@ services:
       - frontend
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      # Сертификат монтируется с хоста: обновление не требует пересборки
+      # образа, а приватный ключ не попадает в слои.
+      - ${TLS_CERT_DIR:-/etc/telegleb/certs}:/etc/nginx/certs:ro
     networks:
       - telegleb_network
 
