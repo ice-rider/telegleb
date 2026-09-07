@@ -1,8 +1,8 @@
 # Прод-развёртывание. Секреты берутся из .env рядом с этим файлом
 # (см. deploy/env.example); в репозиторий .env не коммитится.
 #
-# Образы собираются заранее и загружаются в локальный демон, поэтому
-# pull_policy: never — иначе compose подтянет устаревший :latest из GHCR.
+# Образы собирает CI и публикует в GHCR; сервер только подтягивает их
+# (docker compose pull) — вручную здесь ничего собирать не нужно.
 
 services:
   redis:
@@ -22,7 +22,6 @@ services:
 
   backend:
     image: ghcr.io/ice-rider/telegleb/backend:latest
-    pull_policy: never
     container_name: telegleb_backend
     restart: unless-stopped
     depends_on:
@@ -57,7 +56,6 @@ services:
 
   frontend:
     image: ghcr.io/ice-rider/telegleb/frontend:latest
-    pull_policy: never
     container_name: telegleb_frontend
     restart: unless-stopped
     networks:
@@ -65,7 +63,6 @@ services:
 
   proxy:
     image: ghcr.io/ice-rider/telegleb/proxy:latest
-    pull_policy: never
     container_name: telegleb_proxy
     restart: unless-stopped
     depends_on:
