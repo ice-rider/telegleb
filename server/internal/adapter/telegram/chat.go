@@ -127,6 +127,22 @@ func (r *TelegramChatRepository) GetDashboard(ctx context.Context, sessionToken 
 	}
 
 	dialogs := mergeDialogs(main.dialogs, archive.dialogs)
+
+	// Явные участники папок добираются точечно: без этого чат, лежащий за
+	// потолком выборки, выпал бы из своей папки.
+	known := make(map[string]struct{}, len(dialogs))
+	for i := range dialogs {
+		known[dialogs[i].key] = struct{}{}
+	}
+	extra, err := fetchExplicitFolderPeers(ctx, api, filters, known, me.ID)
+	if err != nil {
+		// Основной список уже есть — терять весь дашборд из-за догрузки не стоит.
+		log.Warn("не удалось добрать явных участников папок", slog.String("error", err.Error()))
+	} else if len(extra) > 0 {
+		dialogs = mergeDialogs(dialogs, extra)
+		log.Info("добраны явные участники папок", slog.Int("count", len(extra)))
+	}
+
 	folders := assignFolders(dialogs, filters, me.ID)
 
 	chats := make([]domain.Chat, 0, len(dialogs))
@@ -283,15 +299,35 @@ func buildPage(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserCl
 	d := newDicts(chats, users, ownID)
 	d.addMessages(messages)
 
+	built, stats, lastDialog := buildDialogs(dialogs, d)
+	page := dialogPage{dialogs: built, stats: stats}
+
+	if hasMore && lastDialog != nil {
+		if info, ok := d.peerOf(lastDialog.Peer); ok {
+			c := dialogCursor{ID: lastDialog.TopMessage, Peer: info.Peer.Ref()}
+			if last, found := d.msgs[msgKey{peer: peerKey(info.Peer.Kind, info.Peer.ID), msgID: lastDialog.TopMessage}]; found {
+				c.Date = last.Date
+			}
+			page.next = encodeCursor(c)
+		}
+	}
+
+	return page
+}
+
+// buildDialogs — общее ядро разбора: превращает сырые диалоги в доменные чаты,
+// считая всё, что было отброшено. Используется и постраничной выборкой, и
+// точечной догрузкой участников папок.
+func buildDialogs(dialogs []tg.DialogClass, d *dicts) ([]dialogInfo, domain.DashboardStats, *tg.Dialog) {
 	now := int(time.Now().Unix())
-	page := dialogPage{dialogs: make([]dialogInfo, 0, len(dialogs))}
-	page.stats.RawDialogs = len(dialogs)
+	result := make([]dialogInfo, 0, len(dialogs))
+	stats := domain.DashboardStats{RawDialogs: len(dialogs)}
 
 	var lastDialog *tg.Dialog
 	for _, dClass := range dialogs {
 		dlg, ok := dClass.(*tg.Dialog)
 		if !ok {
-			page.stats.SkippedNotDialog++
+			stats.SkippedNotDialog++
 			continue
 		}
 		lastDialog = dlg
@@ -300,7 +336,7 @@ func buildPage(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserCl
 		if !ok {
 			// Пир не пришёл в словарях ответа — восстановить accessHash
 			// неоткуда. Считаем такие случаи, чтобы потеря была видна.
-			page.stats.SkippedUnknownPeer++
+			stats.SkippedUnknownPeer++
 			continue
 		}
 
@@ -334,20 +370,89 @@ func buildPage(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserCl
 			entry.chat.LastMessage = &msg
 		}
 
-		page.dialogs = append(page.dialogs, entry)
+		result = append(result, entry)
 	}
 
-	if hasMore && lastDialog != nil {
-		if info, ok := d.peerOf(lastDialog.Peer); ok {
-			c := dialogCursor{ID: lastDialog.TopMessage, Peer: info.Peer.Ref()}
-			if last, found := d.msgs[msgKey{peer: peerKey(info.Peer.Kind, info.Peer.ID), msgID: lastDialog.TopMessage}]; found {
-				c.Date = last.Date
+	return result, stats, lastDialog
+}
+
+// peerDialogBatch — сколько пиров запрашиваем за раз в getPeerDialogs.
+const peerDialogBatch = 100
+
+// fetchExplicitFolderPeers добирает чаты, которые папки перечисляют явно, но
+// которых не оказалось в постраничной выборке.
+//
+// Отдельного «дай чаты папки N» в MTProto нет: folder_id в getDialogs — это
+// архив (0 или 1), а не пользовательские папки. Зато описание папки содержит
+// include_peers и pinned_peers уже с accessHash, и такие пиры можно запросить
+// точечно через getPeerDialogs. Это закрывает дыру, когда явный участник
+// папки лежит за потолком выборки и папка молча теряет его.
+//
+// Папки, заданные предикатами (contacts, groups, broadcasts, bots), так
+// добрать нельзя: предикат применяется ко всему списку диалогов.
+func fetchExplicitFolderPeers(
+	ctx context.Context,
+	api *tg.Client,
+	filters []tg.DialogFilterClass,
+	known map[string]struct{},
+	ownID int64,
+) ([]dialogInfo, error) {
+	var (
+		wanted []tg.InputDialogPeerClass
+		queued = make(map[string]struct{})
+	)
+
+	collect := func(peers []tg.InputPeerClass) {
+		for _, p := range peers {
+			key, ok := inputPeerClassKey(p, ownID)
+			if !ok {
+				continue
 			}
-			page.next = encodeCursor(c)
+			if _, seen := known[key]; seen {
+				continue
+			}
+			if _, dup := queued[key]; dup {
+				continue
+			}
+			queued[key] = struct{}{}
+			wanted = append(wanted, &tg.InputDialogPeer{Peer: p})
 		}
 	}
 
-	return page
+	for _, fClass := range filters {
+		switch f := fClass.(type) {
+		case *tg.DialogFilter:
+			collect(f.PinnedPeers)
+			collect(f.IncludePeers)
+		case *tg.DialogFilterChatlist:
+			collect(f.PinnedPeers)
+			collect(f.IncludePeers)
+		}
+	}
+
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+
+	var extra []dialogInfo
+	for start := 0; start < len(wanted); start += peerDialogBatch {
+		end := start + peerDialogBatch
+		if end > len(wanted) {
+			end = len(wanted)
+		}
+
+		res, err := api.MessagesGetPeerDialogs(ctx, wanted[start:end])
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch explicit folder peers: %w", err)
+		}
+
+		d := newDicts(res.Chats, res.Users, ownID)
+		d.addMessages(res.Messages)
+		built, _, _ := buildDialogs(res.Dialogs, d)
+		extra = append(extra, built...)
+	}
+
+	return extra, nil
 }
 
 // mergeDialogs склеивает основной список с архивом, отбрасывая повторы.
